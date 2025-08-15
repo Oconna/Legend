@@ -184,7 +184,7 @@ const gameManager = new GameManager();
 io.on('connection', (socket) => {
     console.log(`🔗 Neuer Client verbunden: ${socket.id}`);
 
-    // Spieler registrieren
+    // Spieler registrieren (neu hinzugefügt)
     socket.on('register-player', (playerData) => {
         gameManager.players.set(socket.id, {
             name: playerData.name,

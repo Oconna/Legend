@@ -1,4 +1,100 @@
-<!DOCTYPE html>
+updateGameSettingsDisplay() {
+                if (!this.currentGame) return;
+
+                const game = this.games.get(this.currentGame);
+                const settingsDisplay = document.getElementById('gameSettingsDisplay');
+                const hostControls = document.getElementById('hostControls');
+                
+                if (!game) return;
+
+                // Zeige aktuelle Einstellungen
+                const mapSizeText = this.getMapSizeText(game.settings.mapSize);
+                settingsDisplay.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                        <div><strong>Kartengröße:</strong> ${mapSizeText}</div>
+                        <div><strong>Max. Spieler:</strong> ${game.maxPlayers}</div>
+                        <div><strong>Spielmodus:</strong> Standard</div>
+                        <div><strong>Status:</strong> ${game.status === 'waiting' ? 'Wartet' : 'Läuft'}</div>
+                    </div>
+                `;
+
+                // Zeige Host-Controls nur für Host
+                const isHost = game.host === this.currentPlayer?.name;
+                if (isHost) {
+                    hostControls.style.display = 'block';
+                    document.getElementById('hostMapSize').value = game.settings.mapSize;
+                } else {
+                    hostControls.style.display = 'none';
+                }
+            }
+
+            updateGameSettingsDisplay() {
+                if (!this.currentGame) return;
+
+                const game = this.currentGame;
+                const settingsDisplay = document.getElementById('gameSettingsDisplay');
+                const hostControls = document.getElementById('hostControls');
+                
+                if (!game || !settingsDisplay) return;
+
+                // Zeige aktuelle Einstellungen
+                const mapSizeText = this.getMapSizeText(game.settings?.mapSize || 30);
+                settingsDisplay.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                        <div><strong>Kartengröße:</strong> ${mapSizeText}</div>
+                        <div><strong>Max. Spieler:</strong> ${game.maxPlayers}</div>
+                        <div><strong>Spielmodus:</strong> Standard</div>
+                        <div><strong>Status:</strong> ${game.status === 'waiting' ? 'Wartet' : 'Läuft'}</div>
+                    </div>
+                `;
+
+                // Zeige Host-Controls nur für Host
+                if (hostControls) {
+                    const isHost = game.hostName === this.currentPlayer?.name;
+                    if (isHost) {
+                        hostControls.style.display = 'block';
+                        const hostMapSizeSelect = document.getElementById('hostMapSize');
+                        if (hostMapSizeSelect) {
+                            hostMapSizeSelect.value = game.settings?.mapSize || 30;
+                        }
+                    } else {
+                        hostControls.style.display = 'none';
+                    }
+                }
+            }
+
+            updateGameSettings() {
+                if (!this.currentGame) return;
+
+                const game = this.currentGame;
+                const isHost = game.hostName === this.currentPlayer?.name;
+                
+                if (!isHost) {
+                    alert('Nur der Host kann die Einstellungen ändern!');
+                    return;
+                }
+
+                // Update game settings via server
+                const newMapSize = parseInt(document.getElementById('hostMapSize').value);
+                
+                this.socket.emit('update-game-settings', {
+                    gameId: game.id,
+                    settings: {
+                        mapSize: newMapSize,
+                        gameMode: 'standard'
+                    }
+                });
+            }
+
+            getMapSizeText(size) {
+                const sizes = {
+                    20: 'Klein (20x20)',
+                    30: 'Mittel (30x30)', 
+                    50: 'Groß (50x50)',
+                    100: 'Riesig (100x100)'
+                };
+                return sizes[size] || `${size}x${size}`;
+            }<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
