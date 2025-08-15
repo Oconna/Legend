@@ -72,6 +72,7 @@
             cursor: pointer;
             transition: all 0.2s;
             width: 100%;
+            margin-bottom: 5px;
         }
 
         .btn:hover {
@@ -141,9 +142,9 @@
             <canvas class="map-canvas" id="gameCanvas"></canvas>
             
             <div class="zoom-controls">
-                <button class="zoom-btn" onclick="zoomIn()">+</button>
-                <button class="zoom-btn" onclick="zoomOut()">−</button>
-                <button class="zoom-btn" onclick="resetView()" style="font-size: 14px;">⌂</button>
+                <button class="zoom-btn" id="zoomInBtn">+</button>
+                <button class="zoom-btn" id="zoomOutBtn">−</button>
+                <button class="zoom-btn" id="resetViewBtn" style="font-size: 14px;">⌂</button>
             </div>
             
             <div class="coordinates" id="coordinates">
@@ -170,69 +171,62 @@
                     • WASD/Pfeiltasten = Bewegen<br>
                     • Leertaste = Kamera zentrieren
                 </p>
-                <button class="btn btn-secondary" onclick="returnToLobby()">🚪 Zur Lobby</button>
+                <button class="btn" id="zoomInBtn2">🔍+ Vergrößern</button>
+                <button class="btn" id="zoomOutBtn2">🔍- Verkleinern</button>
+                <button class="btn" id="resetViewBtn2">🏠 Kamera zentrieren</button>
+                <button class="btn btn-secondary" id="returnLobbyBtn">🚪 Zur Lobby</button>
             </div>
         </div>
     </div>
 
     <script>
+        // ALLE FUNKTIONEN IN EINEM SCRIPT-BLOCK!
+        
         // ========================================
-        // TERRAIN DEFINITIONS - EINFACH ERWEITERBAR!
+        // TERRAIN DEFINITIONS
         // ========================================
         
         const TERRAIN_DEFINITIONS = {
-            // Basis-Terrains
             grass: {
                 name: 'Wiese',
                 color: '#27ae60',
                 movementCost: 1,
                 symbol: '🌱',
                 texture: 'dots',
-                passable: true,
-                category: 'basic'
+                passable: true
             },
-            
             forest: {
                 name: 'Wald',
                 color: '#229954',
                 movementCost: 2,
                 symbol: '🌲',
                 texture: 'trees',
-                passable: true,
-                category: 'basic'
+                passable: true
             },
-            
             mountain: {
                 name: 'Berge',
                 color: '#95a5a6',
                 movementCost: 3,
                 symbol: '⛰️',
                 texture: 'triangles',
-                passable: true,
-                category: 'basic'
+                passable: true
             },
-            
             swamp: {
                 name: 'Sumpf',
                 color: '#8b4513',
                 movementCost: 2,
                 symbol: '🐸',
                 texture: 'circles',
-                passable: true,
-                category: 'basic'
+                passable: true
             },
-            
             water: {
                 name: 'Wasser',
                 color: '#3498db',
-                movementCost: -1, // -1 = unpassierbar
+                movementCost: -1,
                 symbol: '💧',
                 texture: 'waves',
-                passable: false,
-                category: 'basic'
+                passable: false
             },
-            
-            // Gebäude-Terrains
             city: {
                 name: 'Stadt',
                 color: '#e67e22',
@@ -240,10 +234,8 @@
                 symbol: '🏘️',
                 texture: 'squares',
                 passable: true,
-                goldIncome: 2,
-                category: 'building'
+                goldIncome: 2
             },
-            
             castle: {
                 name: 'Burg',
                 color: '#9b59b6',
@@ -252,13 +244,12 @@
                 texture: 'castle',
                 passable: true,
                 goldIncome: 5,
-                defensiveBonus: 2,
-                category: 'building'
+                defensiveBonus: 2
             }
         };
 
         // ========================================
-        // TEXTURE RENDERER - ERWEITERBAR!
+        // TERRAIN RENDERER
         // ========================================
         
         class TerrainRenderer {
@@ -363,37 +354,34 @@
             
             static renderCastle(ctx, x, y, size) {
                 ctx.fillStyle = '#8e44ad';
-                // Burg-Grundriss
                 ctx.fillRect(x + size * 0.2, y + size * 0.3, size * 0.6, size * 0.4);
-                // Türme
                 ctx.fillRect(x + size * 0.1, y + size * 0.2, size * 0.2, size * 0.3);
                 ctx.fillRect(x + size * 0.7, y + size * 0.2, size * 0.2, size * 0.3);
             }
         }
 
         // ========================================
-        // MAIN MAP SYSTEM
+        // MAP SYSTEM
         // ========================================
         
         class MapSystem {
             constructor(gameSettings = null) {
+                console.log('🚀 MapSystem Konstruktor gestartet...');
+                
                 this.canvas = document.getElementById('gameCanvas');
                 this.ctx = this.canvas.getContext('2d');
                 
-                // Game settings from lobby
                 this.gameSettings = gameSettings || {
                     mapSize: 30,
                     playerCount: 4,
                     gameMode: 'standard'
                 };
                 
-                // Map properties
                 this.mapSize = this.gameSettings.mapSize;
                 this.tileSize = 32;
                 this.mapData = [];
                 this.terrainTypes = TERRAIN_DEFINITIONS;
                 
-                // Camera properties
                 this.camera = {
                     x: 0,
                     y: 0,
@@ -402,88 +390,35 @@
                     maxZoom: 3.0
                 };
                 
-                // Interaction
                 this.isDragging = false;
                 this.lastMousePos = { x: 0, y: 0 };
                 
+                console.log('📐 Initialisiere Canvas...');
                 this.initializeCanvas();
+                console.log('🗺️ Initialisiere Karte...');
                 this.initializeMap();
+                console.log('🎮 Setup Event Listeners...');
                 this.setupEventListeners();
-                this.generateGameMap(); // Karte basierend auf Lobby-Einstellungen
+                console.log('🌍 Generiere Terrain...');
+                this.generateGameMap();
+                console.log('🎨 Erste Renderung...');
                 this.render();
+                console.log('✅ MapSystem vollständig initialisiert!');
             }
-
-            // ========================================
-            // KARTEN-GENERIERUNG - BASIEREND AUF LOBBY-EINSTELLUNGEN
-            // ========================================
-
-            generateGameMap() {
-                console.log('🗺️ Generiere Spiel-Karte...', this.gameSettings);
-                
-                try {
-                    // Schritt 1: Basis-Terrain mit Perlin-ähnlichem Noise
-                    console.log('📍 Schritt 1: Generiere Basis-Terrain...');
-                    this.generateBaseTerrain();
-                    
-                    // Schritt 2: Wasser-Systeme hinzufügen
-                    console.log('📍 Schritt 2: Füge Wasser-Systeme hinzu...');
-                    this.addWaterSystems();
-                    
-                    // Schritt 3: Bergketten erstellen
-                    console.log('📍 Schritt 3: Erstelle Bergketten...');
-                    this.addMountainRanges();
-                    
-                    // Schritt 4: Wälder platzieren
-                    console.log('📍 Schritt 4: Platziere Wälder...');
-                    this.addForests();
-                    
-                    // Schritt 5: Sümpfe in Niederungen
-                    console.log('📍 Schritt 5: Füge Sümpfe hinzu...');
-                    this.addSwamps();
-                    
-                    // Schritt 6: Städte und Burgen basierend auf Spielerzahl
-                    console.log('📍 Schritt 6: Platziere Städte und Burgen...');
-                    this.placeCitiesAndCastles();
-                    
-                    console.log('📍 Aktualisiere Karten-Informationen...');
-                    this.updateMapInfo();
-                    
-                    console.log('📍 Rendere Karte...');
-                    this.render();
-                    
-                    console.log('✅ Spiel-Karte erfolgreich generiert!');
-                } catch (error) {
-                    console.error('❌ Fehler bei der Karten-Generierung:', error);
-                }
-            }
-
-            // ========================================
-            // CORE SYSTEM
-            // ========================================
 
             initializeCanvas() {
-                console.log('🖼️ Initialisiere Canvas...');
+                const rect = this.canvas.getBoundingClientRect();
+                console.log('📐 Canvas Größe:', rect.width, 'x', rect.height);
                 
-                try {
-                    const rect = this.canvas.getBoundingClientRect();
-                    console.log('📐 Canvas Größe:', rect.width, 'x', rect.height);
-                    
-                    this.canvas.width = rect.width;
-                    this.canvas.height = rect.height;
-                    
-                    const dpr = window.devicePixelRatio || 1;
-                    console.log('📱 Device Pixel Ratio:', dpr);
-                    
-                    this.canvas.width = rect.width * dpr;
-                    this.canvas.height = rect.height * dpr;
-                    this.ctx.scale(dpr, dpr);
-                    this.canvas.style.width = rect.width + 'px';
-                    this.canvas.style.height = rect.height + 'px';
-                    
-                    console.log('✅ Canvas erfolgreich initialisiert');
-                } catch (error) {
-                    console.error('❌ Fehler bei Canvas-Initialisierung:', error);
-                }
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                
+                const dpr = window.devicePixelRatio || 1;
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                this.ctx.scale(dpr, dpr);
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
             }
 
             initializeMap() {
@@ -500,6 +435,35 @@
                     }
                 }
                 this.centerCamera();
+                this.updateMapInfo();
+                console.log(`🗺️ Karte initialisiert: ${this.mapSize}x${this.mapSize} = ${this.mapSize * this.mapSize} Felder`);
+            }
+
+            generateGameMap() {
+                console.log('🗺️ Starte Karten-Generierung...');
+                
+                // Einfache, sichtbare Testmuster erstellen
+                for (let y = 0; y < this.mapSize; y++) {
+                    for (let x = 0; x < this.mapSize; x++) {
+                        // Erstelle ein Schachbrettmuster für Test
+                        if ((x + y) % 4 === 0) {
+                            this.mapData[y][x].terrain = 'water';
+                        } else if ((x + y) % 4 === 1) {
+                            this.mapData[y][x].terrain = 'forest';
+                        } else if ((x + y) % 4 === 2) {
+                            this.mapData[y][x].terrain = 'mountain';
+                        } else {
+                            this.mapData[y][x].terrain = 'grass';
+                        }
+                    }
+                }
+                
+                // Füge einige Städte hinzu
+                this.mapData[5][5].terrain = 'city';
+                this.mapData[10][10].terrain = 'castle';
+                this.mapData[15][15].terrain = 'city';
+                
+                console.log('✅ Test-Karte mit Schachbrettmuster generiert');
                 this.updateMapInfo();
             }
 
@@ -518,7 +482,7 @@
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
                 
-                if (e.button === 2) { // Nur Rechtsklick für Panning
+                if (e.button === 2) {
                     this.isDragging = true;
                     this.lastMousePos = { x, y };
                 }
@@ -631,20 +595,13 @@
             }
 
             render() {
-                console.log('🎨 Starte Rendering...');
-                
                 const canvasRect = this.canvas.getBoundingClientRect();
-                console.log('📐 Canvas Rect:', canvasRect.width, 'x', canvasRect.height);
-                
                 this.ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
                 
                 const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
                 const startY = Math.max(0, Math.floor(this.camera.y / this.tileSize) - 1);
                 const endX = Math.min(this.mapSize, startX + Math.ceil(canvasRect.width / (this.tileSize * this.camera.zoom)) + 2);
                 const endY = Math.min(this.mapSize, startY + Math.ceil(canvasRect.height / (this.tileSize * this.camera.zoom)) + 2);
-                
-                console.log(`🎨 Rendering Bereich: (${startX}, ${startY}) bis (${endX}, ${endY})`);
-                console.log(`🎨 Kamera: (${this.camera.x}, ${this.camera.y}), Zoom: ${this.camera.zoom}`);
                 
                 let tilesRendered = 0;
                 for (let y = startY; y < endY; y++) {
@@ -654,10 +611,7 @@
                     }
                 }
                 
-                console.log(`🎨 ${tilesRendered} Tiles gerendert`);
-                
                 this.renderGrid(startX, startY, endX, endY);
-                console.log('✅ Rendering abgeschlossen');
             }
 
             renderTile(gridX, gridY) {
@@ -711,120 +665,108 @@
                 this.ctx.stroke();
             }
 
-            // ========================================
-            // MAP GENERATION METHODS
-            // ========================================
+            zoomIn() {
+                console.log('🔍 Zoom In');
+                this.camera.zoom = Math.min(this.camera.maxZoom, this.camera.zoom * 1.2);
+                this.render();
+            }
 
-            generateBaseTerrain() {
+            zoomOut() {
+                console.log('🔍 Zoom Out');
+                this.camera.zoom = Math.max(this.camera.minZoom, this.camera.zoom / 1.2);
+                this.render();
+            }
+
+            resetView() {
+                console.log('🏠 Reset View');
+                this.camera.zoom = 1.0;
+                this.centerCamera();
+                this.render();
+            }
+
+            returnToLobby() {
+                if (confirm('🚪 Zur Lobby zurückkehren?\n\nDer Spielfortschritt geht verloren!')) {
+                    window.location.href = '/';
+                }
+            }
+
+            updateMapInfo() {
+                const currentPlayerName = this.gameSettings.currentPlayer?.name || 'Unbekannt';
+                const cityCount = this.countTerrain('city');
+                const castleCount = this.countTerrain('castle');
+                
+                document.getElementById('mapInfo').innerHTML = `
+                    <strong>Spiel-Info:</strong><br>
+                    Spieler: ${currentPlayerName}<br>
+                    Spiel-ID: ${this.gameSettings.gameId}<br>
+                    <hr style="margin: 8px 0; opacity: 0.3;">
+                    <strong>Karten-Info:</strong><br>
+                    Größe: ${this.mapSize}x${this.mapSize}<br>
+                    Städte: ${cityCount}<br>
+                    Burgen: ${castleCount}
+                `;
+            }
+
+            countTerrain(terrainType) {
+                let count = 0;
                 for (let y = 0; y < this.mapSize; y++) {
                     for (let x = 0; x < this.mapSize; x++) {
-                        this.mapData[y][x].terrain = 'grass';
-                    }
-                }
-            }
-
-            addWaterSystems() {
-                const waterBodies = Math.max(1, Math.floor(this.mapSize / 15));
-                
-                for (let i = 0; i < waterBodies; i++) {
-                    const centerX = Math.floor(Math.random() * this.mapSize);
-                    const centerY = Math.floor(Math.random() * this.mapSize);
-                    const size = Math.random() * 5 + 3;
-                    
-                    this.floodFill(centerX, centerY, size, 'water', 0.7);
-                }
-            }
-
-            addMountainRanges() {
-                const mountainRanges = Math.max(1, Math.floor(this.mapSize / 20));
-                
-                for (let i = 0; i < mountainRanges; i++) {
-                    const startX = Math.floor(Math.random() * this.mapSize);
-                    const startY = Math.floor(Math.random() * this.mapSize);
-                    const length = Math.random() * 10 + 5;
-                    
-                    this.createMountainChain(startX, startY, length);
-                }
-            }
-
-            createMountainChain(startX, startY, length) {
-                let x = startX;
-                let y = startY;
-                const dirX = (Math.random() - 0.5) * 2;
-                const dirY = (Math.random() - 0.5) * 2;
-                
-                for (let i = 0; i < length; i++) {
-                    this.floodFill(Math.floor(x), Math.floor(y), 2, 'mountain', 0.8);
-                    
-                    x += dirX + (Math.random() - 0.5);
-                    y += dirY + (Math.random() - 0.5);
-                    
-                    if (x < 0 || x >= this.mapSize || y < 0 || y >= this.mapSize) break;
-                }
-            }
-
-            addForests() {
-                const forestCount = Math.floor(this.mapSize * this.mapSize * 0.02);
-                
-                for (let i = 0; i < forestCount; i++) {
-                    const x = Math.floor(Math.random() * this.mapSize);
-                    const y = Math.floor(Math.random() * this.mapSize);
-                    
-                    if (this.mapData[y] && this.mapData[y][x] && this.mapData[y][x].terrain === 'grass') {
-                        const size = Math.random() * 3 + 2;
-                        this.floodFill(x, y, size, 'forest', 0.6);
-                    }
-                }
-            }
-
-            addSwamps() {
-                console.log('🐸 Füge Sümpfe hinzu...');
-                let swampsAdded = 0;
-                
-                for (let y = 1; y < this.mapSize - 1; y++) {
-                    for (let x = 1; x < this.mapSize - 1; x++) {
-                        if (this.mapData[y][x].terrain === 'grass') {
-                            let waterNearby = 0;
-                            
-                            for (let dy = -1; dy <= 1; dy++) {
-                                for (let dx = -1; dx <= 1; dx++) {
-                                    if (this.mapData[y + dy] && this.mapData[y + dy][x + dx] && 
-                                        this.mapData[y + dy][x + dx].terrain === 'water') {
-                                        waterNearby++;
-                                    }
-                                }
-                            }
-                            
-                            if (waterNearby >= 2 && Math.random() < 0.5) {
-                                this.mapData[y][x].terrain = 'swamp';
-                                swampsAdded++;
-                            }
+                        if (this.mapData[y][x].terrain === terrainType) {
+                            count++;
                         }
                     }
                 }
-                console.log(`🐸 ${swampsAdded} Sumpffelder hinzugefügt`);
+                return count;
             }
 
-            placeCitiesAndCastles() {
-                const playerCount = this.gameSettings.playerCount || 4;
-                const totalBuildings = Math.max(playerCount, Math.floor(this.mapSize / 6));
-                const castleCount = Math.max(1, Math.floor(totalBuildings / 3));
-                const cityCount = totalBuildings - castleCount;
+            updateCoordinatesDisplay(gridX, gridY) {
+                const coords = document.getElementById('coordinates');
+                const terrainType = this.isValidGridPosition(gridX, gridY) ? 
+                    this.mapData[gridY][gridX].terrain : 'außerhalb';
+                const terrainName = this.terrainTypes[terrainType]?.name || terrainType;
                 
-                const placedBuildings = [];
-                
-                for (let i = 0; i < castleCount; i++) {
-                    const pos = this.findGoodBuildingSpot('castle', placedBuildings);
-                    if (pos) {
-                        this.mapData[pos.y][pos.x].terrain = 'castle';
-                        placedBuildings.push(pos);
-                    }
+                coords.innerHTML = `
+                    X: ${gridX}, Y: ${gridY}<br>
+                    Terrain: ${terrainName}<br>
+                    Zoom: ${Math.round(this.camera.zoom * 100)}%
+                `;
+            }
+        }
+
+        // ========================================
+        // INITIALISIERUNG
+        // ========================================
+        
+        function getGameSettingsFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const settingsParam = urlParams.get('settings');
+            
+            if (settingsParam) {
+                try {
+                    return JSON.parse(decodeURIComponent(settingsParam));
+                } catch (e) {
+                    console.error('Fehler beim Laden der Spiel-Einstellungen:', e);
                 }
-                
-                for (let i = 0; i < cityCount; i++) {
-                    const pos = this.findGoodBuildingSpot('city', placedBuildings);
-                    if (pos) {
-                        this.mapData[pos.y][pos.x].terrain = 'city';
-                        placedBuildings.push(pos);
-                    }
-                }
+            }
+            
+            return {
+                gameId: 'demo-game',
+                mapSize: 30,
+                playerCount: 4,
+                players: [{ name: 'DemoSpieler', id: 1 }],
+                hostName: 'DemoHost',
+                currentPlayer: { name: 'DemoSpieler', id: 1 }
+            };
+        }
+
+        // Globale Variable
+        let mapSystem = null;
+
+        // Initialisierung wenn Seite geladen ist
+        window.addEventListener('load', function() {
+            console.log('🚀 Seite geladen, starte Spiel...');
+            
+            const gameSettings = getGameSettingsFromURL();
+            console.log('⚙️ Spiel-Einstellungen:', gameSettings);
+            
+            //
