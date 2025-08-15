@@ -563,9 +563,6 @@
                         this.camera.y += 50 / this.camera.zoom;
                         this.render();
                         break;
-                    case 'KeyR':
-                        // R-Taste entfernt - keine Karten-Regenerierung im Spiel
-                        break;
                     case 'Space':
                         e.preventDefault();
                         this.centerCamera();
@@ -778,3 +775,13 @@
                     if (pos) {
                         this.mapData[pos.y][pos.x].terrain = 'castle';
                         placedBuildings.push(pos);
+                    }
+                }
+                
+                for (let i = 0; i < cityCount; i++) {
+                    const pos = this.findGoodBuildingSpot('city', placedBuildings);
+                    if (pos) {
+                        this.mapData[pos.y][pos.x].terrain = 'city';
+                        placedBuildings.push(pos);
+                    }
+                }
