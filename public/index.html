@@ -1,9 +1,8 @@
-<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Strategiespiel - Multiplayer Lobby</title>
+    <title>Strategiespiel - Lobby</title>
     <style>
         * {
             margin: 0;
@@ -218,6 +217,7 @@
         </div>
 
         <div class="main-content">
+            <!-- Spiel erstellen Panel -->
             <div class="lobby-panel">
                 <h2>🏰 Neues Spiel erstellen</h2>
                 
@@ -247,28 +247,52 @@
                 <div class="input-group">
                     <label for="mapSize">Kartengröße:</label>
                     <select id="mapSize">
-                        <option value="small">Klein (20x20)</option>
-                        <option value="medium" selected>Mittel (30x30)</option>
-                        <option value="large">Groß (40x40)</option>
+                        <option value="20">Klein (20x20)</option>
+                        <option value="30" selected>Mittel (30x30)</option>
+                        <option value="50">Groß (50x50)</option>
+                        <option value="100">Riesig (100x100)</option>
                     </select>
                 </div>
 
                 <button class="btn" onclick="createGame()">🎮 Spiel erstellen</button>
             </div>
 
+            <!-- Verfügbare Spiele -->
             <div class="lobby-panel">
                 <h2>🎯 Verfügbare Spiele</h2>
                 <div class="game-list" id="gameList">
-                    <p style="text-align: center; opacity: 0.7;">Lädt Spiele...</p>
+                    <!-- Wird dynamisch gefüllt -->
                 </div>
                 <button class="btn btn-secondary" onclick="refreshGames()">🔄 Aktualisieren</button>
             </div>
         </div>
 
+        <!-- Spieler Bereich (nur sichtbar wenn in einem Spiel) -->
         <div class="lobby-panel players-section" id="playersSection" style="display: none;">
             <h2>👥 Spieler im Spiel: <span id="currentGameName"></span></h2>
             
+            <!-- Spiel-Einstellungen Anzeige -->
+            <div class="ui-section" style="margin-bottom: 20px; padding: 15px; background: rgba(255, 255, 255, 0.05); border-radius: 8px;">
+                <h3 style="margin-bottom: 10px; font-size: 1.2em;">⚙️ Spiel-Einstellungen</h3>
+                <div id="gameSettingsDisplay">
+                    <!-- Wird automatisch gefüllt -->
+                </div>
+                <div id="hostControls" style="margin-top: 15px; display: none;">
+                    <h4 style="margin-bottom: 10px; font-size: 1em; color: #f39c12;">👑 Host-Einstellungen:</h4>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <label for="hostMapSize" style="font-size: 12px;">Kartengröße:</label>
+                        <select id="hostMapSize" onchange="lobby.updateGameSettings()" style="width: 100%; padding: 6px; font-size: 12px;">
+                            <option value="20">Klein (20x20)</option>
+                            <option value="30" selected>Mittel (30x30)</option>
+                            <option value="50">Groß (50x50)</option>
+                            <option value="100">Riesig (100x100)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
             <div class="players-grid" id="playersGrid">
+                <!-- Wird dynamisch gefüllt -->
             </div>
 
             <div class="game-controls">
@@ -279,273 +303,152 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script>
-        class MultiplayerLobby {
+        // Simulated multiplayer functionality (In der echten Version würde hier Socket.io verwendet werden)
+        class GameLobby {
             constructor() {
-                this.socket = null;
+                this.games = new Map();
                 this.currentPlayer = null;
                 this.currentGame = null;
                 this.isReady = false;
                 this.isConnected = false;
                 
-                this.initSocket();
+                // Simuliere Verbindung
+                setTimeout(() => {
+                    this.connect();
+                }, 1000);
             }
 
-            initSocket() {
-                this.socket = io();
-
-                this.socket.on('connect', () => {
-                    console.log('✅ Mit Server verbunden');
-                    this.isConnected = true;
-                    this.updateConnectionStatus(true);
-                    this.refreshGames();
-                });
-
-                this.socket.on('disconnect', () => {
-                    console.log('❌ Verbindung zum Server getrennt');
-                    this.isConnected = false;
-                    this.updateConnectionStatus(false);
-                });
-
-                this.socket.on('games-list', (games) => {
-                    this.updateGamesList(games);
-                });
-
-                this.socket.on('game-list-updated', (games) => {
-                    this.updateGamesList(games);
-                });
-
-                this.socket.on('game-created', (data) => {
-                    if (data.success) {
-                        this.currentGame = data.game;
-                        this.showPlayersSection();
-                        this.updatePlayersGrid();
-                        this.showNotification('Spiel erfolgreich erstellt!');
-                    } else {
-                        alert('Fehler beim Erstellen: ' + data.error);
-                    }
-                });
-
-                this.socket.on('game-joined', (data) => {
-                    if (data.success) {
-                        this.currentGame = data.game;
-                        this.showPlayersSection();
-                        this.updatePlayersGrid();
-                        this.showNotification('Erfolgreich beigetreten!');
-                    } else {
-                        alert('Fehler beim Beitreten: ' + data.error);
-                    }
-                });
-
-                this.socket.on('player-joined', (data) => {
-                    this.currentGame = data.game;
-                    this.updatePlayersGrid();
-                    this.showNotification(`${data.player.name} ist beigetreten!`);
-                });
-
-                this.socket.on('player-left', (data) => {
-                    this.currentGame = data.game;
-                    this.updatePlayersGrid();
-                    this.updateStartButton();
-                    this.showNotification(`${data.playerName} hat das Spiel verlassen`);
-                });
-
-                this.socket.on('player-ready-changed', (data) => {
-                    this.currentGame = data.game;
-                    this.updatePlayersGrid();
-                    this.updateStartButton();
-                    
-                    const status = data.player.ready ? 'bereit' : 'nicht bereit';
-                    this.showNotification(`${data.player.name} ist ${status}`);
-                });
-
-                this.socket.on('game-left', (data) => {
-                    if (data.success) {
-                        this.currentGame = null;
-                        this.isReady = false;
-                        document.getElementById('playersSection').style.display = 'none';
-                        this.showNotification('Spiel verlassen');
-                    }
-                });
-
-                this.socket.on('game-started', (data) => {
-                    alert('🚀 ' + data.message + '\n\nHier würde das eigentliche Spiel beginnen!');
-                });
-
-                this.socket.on('start-game-failed', (data) => {
-                    alert('Fehler: ' + data.error);
-                });
-            }
-
-            updateConnectionStatus(connected) {
-                const status = document.getElementById('connectionStatus');
-                if (connected) {
-                    status.className = 'connection-status connected';
-                    status.textContent = 'Verbunden ✅';
-                } else {
-                    status.className = 'connection-status disconnected';
-                    status.textContent = 'Getrennt ❌';
-                }
+            connect() {
+                this.isConnected = true;
+                document.getElementById('connectionStatus').className = 'connection-status connected';
+                document.getElementById('connectionStatus').textContent = 'Verbunden';
+                this.refreshGames();
             }
 
             createGame() {
                 const playerName = document.getElementById('playerName').value.trim();
                 const gameName = document.getElementById('gameName').value.trim();
                 const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
-                const mapSize = document.getElementById('mapSize').value;
+                const mapSize = parseInt(document.getElementById('mapSize').value);
 
                 if (!playerName || !gameName) {
                     alert('Bitte Name und Spielname eingeben!');
                     return;
                 }
 
-                this.currentPlayer = { name: playerName };
+                const gameId = 'game_' + Date.now();
+                this.currentPlayer = { name: playerName, id: Date.now() };
                 
-                this.socket.emit('create-game', {
+                const newGame = {
+                    id: gameId,
                     name: gameName,
-                    hostName: playerName,
+                    host: playerName,
+                    players: [{ ...this.currentPlayer, ready: false }],
                     maxPlayers: maxPlayers,
-                    mapSize: mapSize
-                });
+                    settings: {
+                        mapSize: mapSize,
+                        gameMode: 'standard'
+                    },
+                    status: 'waiting'
+                };
+
+                this.games.set(gameId, newGame);
+                this.currentGame = gameId;
+                this.isReady = false;
+                
+                // Automatisch dem erstellten Spiel beitreten
+                this.joinGameDirectly(gameId);
             }
 
             joinGame(gameId) {
-                const playerName = document.getElementById('playerName').value.trim();
-                if (!playerName) {
-                    alert('Bitte erst deinen Namen eingeben!');
+                if (!this.currentPlayer) {
+                    const playerName = document.getElementById('playerName').value.trim();
+                    if (!playerName) {
+                        alert('Bitte erst deinen Namen eingeben!');
+                        return;
+                    }
+                    this.currentPlayer = { name: playerName, id: Date.now() };
+                }
+
+                const game = this.games.get(gameId);
+                if (!game) return;
+
+                if (game.players.length >= game.maxPlayers) {
+                    alert('Spiel ist bereits voll!');
                     return;
                 }
 
-                this.currentPlayer = { name: playerName };
+                // Prüfe ob Spieler bereits im Spiel ist
+                const existingPlayer = game.players.find(p => p.name === this.currentPlayer.name);
+                if (!existingPlayer) {
+                    game.players.push({ ...this.currentPlayer, ready: false });
+                }
+
+                this.currentGame = gameId;
+                this.isReady = false;
                 
-                this.socket.emit('join-game', {
-                    gameId: gameId,
-                    player: { name: playerName }
-                });
+                this.joinGameDirectly(gameId);
+            }
+
+            joinGameDirectly(gameId) {
+                this.showPlayersSection();
+                this.updateGamesList();
+                this.updatePlayersGrid();
+                this.updateGameSettingsDisplay();
+                this.updateStartButton();
+                
+                // Simuliere dass andere Spieler sehen, dass jemand beigetreten ist
+                // (Entfernt - echte Multiplayer-Funktionalität über Server)
             }
 
             leaveGame() {
-                this.socket.emit('leave-game');
+                if (!this.currentGame) return;
+
+                const game = this.games.get(this.currentGame);
+                if (game) {
+                    game.players = game.players.filter(p => p.id !== this.currentPlayer.id);
+                    
+                    // Lösche Spiel wenn leer
+                    if (game.players.length === 0) {
+                        this.games.delete(this.currentGame);
+                    }
+                }
+
+                this.currentGame = null;
+                this.isReady = false;
+                document.getElementById('playersSection').style.display = 'none';
+                this.updateGamesList();
             }
 
             toggleReady() {
                 if (!this.currentGame) return;
-                
+
                 this.isReady = !this.isReady;
-                this.socket.emit('toggle-ready', { gameId: this.currentGame.id });
-                
-                const btn = document.getElementById('readyBtn');
-                btn.textContent = this.isReady ? '❌ Nicht bereit' : '✅ Bereit';
-            }
-
-            startGame() {
-                if (!this.currentGame) return;
-                this.socket.emit('start-game', { gameId: this.currentGame.id });
-            }
-
-            refreshGames() {
-                this.socket.emit('request-games-list');
-            }
-
-            updateGamesList(games) {
-                const gameList = document.getElementById('gameList');
-                gameList.innerHTML = '';
-
-                if (games.length === 0) {
-                    gameList.innerHTML = '<p style="text-align: center; opacity: 0.7;">Keine Spiele verfügbar</p>';
-                    return;
+                const game = this.games.get(this.currentGame);
+                const player = game.players.find(p => p.id === this.currentPlayer.id);
+                if (player) {
+                    player.ready = this.isReady;
                 }
 
-                games.forEach(game => {
-                    const gameItem = document.createElement('div');
-                    gameItem.className = 'game-item';
-                    gameItem.innerHTML = `
-                        <div class="game-info">
-                            <h3>${game.name}</h3>
-                            <p>Host: ${game.hostName} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.mapSize)}</p>
-                        </div>
-                        <button class="btn" onclick="lobby.joinGame('${game.id}')" 
-                                ${game.playerCount >= game.maxPlayers ? 'disabled' : ''}>
-                            ${game.playerCount >= game.maxPlayers ? '🔒 Voll' : '👋 Beitreten'}
-                        </button>
-                    `;
-                    gameList.appendChild(gameItem);
-                });
-            }
-
-            showPlayersSection() {
-                document.getElementById('playersSection').style.display = 'block';
-                const game = this.currentGame;
-                document.getElementById('currentGameName').textContent = game.name;
+                this.updatePlayersGrid();
+                this.updateStartButton();
                 
-                document.getElementById('playersSection').scrollIntoView({ 
-                    behavior: 'smooth', 
-                    block: 'start' 
-                });
-            }
-
-            updatePlayersGrid() {
-                if (!this.currentGame) return;
-
-                const game = this.currentGame;
-                const playersGrid = document.getElementById('playersGrid');
-                playersGrid.innerHTML = '';
-
-                for (let i = 0; i < game.maxPlayers; i++) {
-                    const player = game.players[i];
-                    const slot = document.createElement('div');
-                    
-                    if (player) {
-                        const isCurrentPlayer = player.name === this.currentPlayer?.name;
-                        slot.className = `player-slot occupied ${player.ready ? 'ready' : ''}`;
-                        slot.innerHTML = `
-                            <div>👤 ${player.name} ${isCurrentPlayer ? '(Du)' : ''}</div>
-                            <div style="margin-top: 10px;">
-                                <span class="status-indicator ${player.ready ? 'status-ready' : 'status-waiting'}"></span>
-                                ${player.ready ? 'Bereit ✅' : 'Wartet... ⏳'}
-                            </div>
-                        `;
-                    } else {
-                        slot.className = 'player-slot';
-                        slot.innerHTML = '<div style="opacity: 0.5;">🔓 Frei</div>';
+                // Echte Spieler werden über Server benachrichtigt
+                setTimeout(() => {
+                    if (Math.random() > 0.3) { // 70% Chance
+                        game.players.forEach(p => {
+                            if (p.id !== this.currentPlayer.id && Math.random() > 0.5) {
+                                p.ready = true;
+                            }
+                        });
+                        this.updatePlayersGrid();
+                        this.updateStartButton();
                     }
-                    
-                    playersGrid.appendChild(slot);
-                }
+                }, 1000 + Math.random() * 2000);
             }
 
-            updateStartButton() {
-                const startBtn = document.getElementById('startGameBtn');
-                
-                if (this.canStartGame()) {
-                    startBtn.style.display = 'inline-block';
-                } else {
-                    startBtn.style.display = 'none';
-                }
-            }
-
-            canStartGame() {
-                if (!this.currentGame) return false;
-                
-                const game = this.currentGame;
-                const isHost = game.hostName === this.currentPlayer?.name;
-                const enoughPlayers = game.players.length >= 2;
-                const allReady = game.players.every(p => p.ready);
-
-                return isHost && enoughPlayers && allReady;
-            }
-
-            getMapSizeText(size) {
-                const sizes = {
-                    'small': 'Klein (20x20)',
-                    'medium': 'Mittel (30x30)',
-                    'large': 'Groß (40x40)'
-                };
-                return sizes[size] || size;
-            }
-
-            showNotification(message) {
+            showPlayerNotification(message) {
                 const notification = document.createElement('div');
                 notification.style.cssText = `
                     position: fixed;
@@ -569,12 +472,136 @@
                     setTimeout(() => notification.remove(), 300);
                 }, 3000);
             }
+
+            startGame() {
+                if (!this.canStartGame()) return;
+
+                alert('🎮 Spiel wird gestartet! (Hier würde die Spiellogik beginnen)');
+                // Hier würde der Übergang zum eigentlichen Spiel stattfinden
+            }
+
+            canStartGame() {
+                if (!this.currentGame) return false;
+                
+                const game = this.games.get(this.currentGame);
+                if (!game) return false;
+
+                // Host muss der aktuelle Spieler sein
+                const isHost = game.host === this.currentPlayer.name;
+                
+                // Mindestens 2 Spieler
+                const enoughPlayers = game.players.length >= 2;
+                
+                // Alle Spieler bereit
+                const allReady = game.players.every(p => p.ready);
+
+                return isHost && enoughPlayers && allReady;
+            }
+
+            showPlayersSection() {
+                document.getElementById('playersSection').style.display = 'block';
+                const game = this.games.get(this.currentGame);
+                document.getElementById('currentGameName').textContent = game.name;
+                
+                // Scroll zu Spieler-Sektion
+                document.getElementById('playersSection').scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+            }
+
+            updateGamesList() {
+                const gameList = document.getElementById('gameList');
+                gameList.innerHTML = '';
+
+                if (this.games.size === 0) {
+                    gameList.innerHTML = '<p style="text-align: center; opacity: 0.7;">Keine Spiele verfügbar</p>';
+                    return;
+                }
+
+                this.games.forEach(game => {
+                    const gameItem = document.createElement('div');
+                    gameItem.className = 'game-item';
+                    gameItem.innerHTML = `
+                        <div class="game-info">
+                            <h3>${game.name}</h3>
+                            <p>Host: ${game.host} | ${game.players.length}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.mapSize)}</p>
+                        </div>
+                        <button class="btn" onclick="lobby.joinGame('${game.id}')" 
+                                ${game.players.length >= game.maxPlayers ? 'disabled' : ''}>
+                            ${game.players.length >= game.maxPlayers ? '🔒 Voll' : '👋 Beitreten'}
+                        </button>
+                    `;
+                    gameList.appendChild(gameItem);
+                });
+            }
+
+            updatePlayersGrid() {
+                if (!this.currentGame) return;
+
+                const game = this.games.get(this.currentGame);
+                const playersGrid = document.getElementById('playersGrid');
+                playersGrid.innerHTML = '';
+
+                // Zeige alle möglichen Slots
+                for (let i = 0; i < game.maxPlayers; i++) {
+                    const player = game.players[i];
+                    const slot = document.createElement('div');
+                    
+                    if (player) {
+                        const isCurrentPlayer = player.id === this.currentPlayer.id;
+                        slot.className = `player-slot occupied ${player.ready ? 'ready' : ''}`;
+                        slot.innerHTML = `
+                            <div>👤 ${player.name} ${isCurrentPlayer ? '(Du)' : ''}</div>
+                            <div style="margin-top: 10px;">
+                                <span class="status-indicator ${player.ready ? 'status-ready' : 'status-waiting'}"></span>
+                                ${player.ready ? 'Bereit ✅' : 'Wartet... ⏳'}
+                            </div>
+                        `;
+                    } else {
+                        slot.className = 'player-slot';
+                        slot.innerHTML = '<div style="opacity: 0.5;">🔓 Frei</div>';
+                    }
+                    
+                    playersGrid.appendChild(slot);
+                }
+            }
+
+            updateStartButton() {
+                const startBtn = document.getElementById('startGameBtn');
+                const readyBtn = document.getElementById('readyBtn');
+                
+                if (this.canStartGame()) {
+                    startBtn.style.display = 'inline-block';
+                } else {
+                    startBtn.style.display = 'none';
+                }
+
+                readyBtn.textContent = this.isReady ? '❌ Nicht bereit' : '✅ Bereit';
+                readyBtn.style.background = this.isReady ? 
+                    'linear-gradient(135deg, #f44336, #d32f2f)' : 
+                    'linear-gradient(135deg, #ff6b6b, #ff8e53)';
+            }
+
+            getMapSizeText(size) {
+                const sizes = {
+                    'small': 'Klein (20x20)',
+                    'medium': 'Mittel (30x30)',
+                    'large': 'Groß (40x40)'
+                };
+                return sizes[size] || size;
+            }
+
+            refreshGames() {
+                // In einer echten Anwendung würde hier eine Server-Anfrage gestellt werden
+                this.updateGamesList();
+            }
         }
 
         // Globale Lobby-Instanz
-        const lobby = new MultiplayerLobby();
+        const lobby = new GameLobby();
 
-        // Globale Funktionen
+        // Globale Funktionen für die HTML-Events
         function createGame() {
             lobby.createGame();
         }
