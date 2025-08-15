@@ -33,6 +33,8 @@
         .map-canvas {
             cursor: grab;
             display: block;
+            width: 100%;
+            height: 100%;
         }
 
         .map-canvas:active {
@@ -134,6 +136,18 @@
             z-index: 100;
             line-height: 1.3;
         }
+
+        .debug-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            z-index: 100;
+            max-width: 200px;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +165,10 @@
                 X: 0, Y: 0<br>
                 Terrain: Unbekannt<br>
                 Zoom: 100%
+            </div>
+            
+            <div class="debug-info" id="debugInfo">
+                Debug: Initialisierung...
             </div>
         </div>
 
@@ -174,13 +192,14 @@
                 <button class="btn" id="zoomInBtn2">🔍+ Vergrößern</button>
                 <button class="btn" id="zoomOutBtn2">🔍- Verkleinern</button>
                 <button class="btn" id="resetViewBtn2">🏠 Kamera zentrieren</button>
+                <button class="btn" id="regenerateBtn">🎲 Neue Karte</button>
                 <button class="btn btn-secondary" id="returnLobbyBtn">🚪 Zur Lobby</button>
             </div>
         </div>
     </div>
 
     <script>
-        // ALLE FUNKTIONEN IN EINEM SCRIPT-BLOCK!
+        console.log('🚀 Script lädt...');
         
         // ========================================
         // TERRAIN DEFINITIONS
@@ -191,49 +210,37 @@
                 name: 'Wiese',
                 color: '#27ae60',
                 movementCost: 1,
-                symbol: '🌱',
-                texture: 'dots',
-                passable: true
+                symbol: '🌱'
             },
             forest: {
                 name: 'Wald',
                 color: '#229954',
                 movementCost: 2,
-                symbol: '🌲',
-                texture: 'trees',
-                passable: true
+                symbol: '🌲'
             },
             mountain: {
                 name: 'Berge',
                 color: '#95a5a6',
                 movementCost: 3,
-                symbol: '⛰️',
-                texture: 'triangles',
-                passable: true
+                symbol: '⛰️'
             },
             swamp: {
                 name: 'Sumpf',
                 color: '#8b4513',
                 movementCost: 2,
-                symbol: '🐸',
-                texture: 'circles',
-                passable: true
+                symbol: '🐸'
             },
             water: {
                 name: 'Wasser',
                 color: '#3498db',
                 movementCost: -1,
-                symbol: '💧',
-                texture: 'waves',
-                passable: false
+                symbol: '💧'
             },
             city: {
                 name: 'Stadt',
                 color: '#e67e22',
                 movementCost: 1,
                 symbol: '🏘️',
-                texture: 'squares',
-                passable: true,
                 goldIncome: 2
             },
             castle: {
@@ -241,143 +248,39 @@
                 color: '#9b59b6',
                 movementCost: 1,
                 symbol: '🏰',
-                texture: 'castle',
-                passable: true,
-                goldIncome: 5,
-                defensiveBonus: 2
+                goldIncome: 5
             }
         };
 
         // ========================================
-        // TERRAIN RENDERER
-        // ========================================
-        
-        class TerrainRenderer {
-            static renderTexture(ctx, x, y, size, textureType) {
-                ctx.save();
-                ctx.globalAlpha = 0.4;
-                
-                switch(textureType) {
-                    case 'waves':
-                        this.renderWaves(ctx, x, y, size);
-                        break;
-                    case 'triangles':
-                        this.renderTriangles(ctx, x, y, size);
-                        break;
-                    case 'trees':
-                        this.renderTrees(ctx, x, y, size);
-                        break;
-                    case 'dots':
-                        this.renderDots(ctx, x, y, size);
-                        break;
-                    case 'circles':
-                        this.renderCircles(ctx, x, y, size);
-                        break;
-                    case 'squares':
-                        this.renderSquares(ctx, x, y, size);
-                        break;
-                    case 'castle':
-                        this.renderCastle(ctx, x, y, size);
-                        break;
-                    default:
-                        this.renderDots(ctx, x, y, size);
-                }
-                
-                ctx.restore();
-            }
-            
-            static renderWaves(ctx, x, y, size) {
-                ctx.strokeStyle = '#2980b9';
-                ctx.lineWidth = 2;
-                for (let i = 0; i < 3; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, y + (size / 4) * (i + 1));
-                    ctx.lineTo(x + size, y + (size / 4) * (i + 1));
-                    ctx.stroke();
-                }
-            }
-            
-            static renderTriangles(ctx, x, y, size) {
-                ctx.fillStyle = '#7f8c8d';
-                ctx.beginPath();
-                ctx.moveTo(x + size/2, y + size * 0.2);
-                ctx.lineTo(x + size * 0.2, y + size * 0.8);
-                ctx.lineTo(x + size * 0.8, y + size * 0.8);
-                ctx.closePath();
-                ctx.fill();
-            }
-            
-            static renderTrees(ctx, x, y, size) {
-                ctx.fillStyle = '#1e8449';
-                for (let i = 0; i < 4; i++) {
-                    const dotX = x + (size * 0.25) + (i % 2) * (size * 0.5);
-                    const dotY = y + (size * 0.25) + Math.floor(i / 2) * (size * 0.5);
-                    ctx.beginPath();
-                    ctx.arc(dotX, dotY, size * 0.1, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-            
-            static renderDots(ctx, x, y, size) {
-                ctx.fillStyle = '#2ecc71';
-                for (let i = 0; i < 6; i++) {
-                    const dotX = x + Math.random() * size;
-                    const dotY = y + Math.random() * size;
-                    ctx.beginPath();
-                    ctx.arc(dotX, dotY, 1, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-            
-            static renderCircles(ctx, x, y, size) {
-                ctx.strokeStyle = '#a0522d';
-                ctx.lineWidth = 1;
-                for (let i = 0; i < 3; i++) {
-                    const radius = (size * 0.15) * (i + 1);
-                    ctx.beginPath();
-                    ctx.arc(x + size/2, y + size/2, radius, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-            }
-            
-            static renderSquares(ctx, x, y, size) {
-                ctx.fillStyle = '#d35400';
-                const squareSize = size * 0.2;
-                for (let i = 0; i < 2; i++) {
-                    for (let j = 0; j < 2; j++) {
-                        const squareX = x + (size * 0.2) + i * (size * 0.4);
-                        const squareY = y + (size * 0.2) + j * (size * 0.4);
-                        ctx.fillRect(squareX, squareY, squareSize, squareSize);
-                    }
-                }
-            }
-            
-            static renderCastle(ctx, x, y, size) {
-                ctx.fillStyle = '#8e44ad';
-                ctx.fillRect(x + size * 0.2, y + size * 0.3, size * 0.6, size * 0.4);
-                ctx.fillRect(x + size * 0.1, y + size * 0.2, size * 0.2, size * 0.3);
-                ctx.fillRect(x + size * 0.7, y + size * 0.2, size * 0.2, size * 0.3);
-            }
-        }
-
-        // ========================================
-        // MAP SYSTEM
+        // MAP SYSTEM CLASS
         // ========================================
         
         class MapSystem {
             constructor(gameSettings = null) {
-                console.log('🚀 MapSystem Konstruktor gestartet...');
+                console.log('🏗️ MapSystem Konstruktor gestartet...');
+                this.updateDebug('Initialisiere MapSystem...');
                 
                 this.canvas = document.getElementById('gameCanvas');
+                if (!this.canvas) {
+                    console.error('❌ Canvas nicht gefunden!');
+                    return;
+                }
+                
                 this.ctx = this.canvas.getContext('2d');
+                if (!this.ctx) {
+                    console.error('❌ Canvas Context nicht verfügbar!');
+                    return;
+                }
                 
                 this.gameSettings = gameSettings || {
+                    gameId: 'demo-game',
                     mapSize: 30,
                     playerCount: 4,
-                    gameMode: 'standard'
+                    currentPlayer: { name: 'DemoSpieler' }
                 };
                 
-                this.mapSize = this.gameSettings.mapSize;
+                this.mapSize = this.gameSettings.mapSize || 30;
                 this.tileSize = 32;
                 this.mapData = [];
                 this.terrainTypes = TERRAIN_DEFINITIONS;
@@ -394,87 +297,150 @@
                 this.lastMousePos = { x: 0, y: 0 };
                 
                 console.log('📐 Initialisiere Canvas...');
+                this.updateDebug('Initialisiere Canvas...');
                 this.initializeCanvas();
+                
                 console.log('🗺️ Initialisiere Karte...');
+                this.updateDebug('Initialisiere Karte...');
                 this.initializeMap();
+                
                 console.log('🎮 Setup Event Listeners...');
+                this.updateDebug('Setup Events...');
                 this.setupEventListeners();
+                
                 console.log('🌍 Generiere Terrain...');
-                this.generateGameMap();
+                this.updateDebug('Generiere Terrain...');
+                this.generateTestMap();
+                
                 console.log('🎨 Erste Renderung...');
+                this.updateDebug('Rendere Karte...');
                 this.render();
+                
+                this.updateDebug('✅ Fertig!');
                 console.log('✅ MapSystem vollständig initialisiert!');
             }
 
+            updateDebug(message) {
+                const debugElement = document.getElementById('debugInfo');
+                if (debugElement) {
+                    debugElement.innerHTML = `Debug:<br>${message}<br>Zeit: ${new Date().toLocaleTimeString()}`;
+                }
+            }
+
             initializeCanvas() {
-                const rect = this.canvas.getBoundingClientRect();
-                console.log('📐 Canvas Größe:', rect.width, 'x', rect.height);
-                
-                this.canvas.width = rect.width;
-                this.canvas.height = rect.height;
-                
-                const dpr = window.devicePixelRatio || 1;
-                this.canvas.width = rect.width * dpr;
-                this.canvas.height = rect.height * dpr;
-                this.ctx.scale(dpr, dpr);
-                this.canvas.style.width = rect.width + 'px';
-                this.canvas.style.height = rect.height + 'px';
+                try {
+                    // Setze Canvas-Größe auf Container-Größe
+                    const container = this.canvas.parentElement;
+                    const rect = container.getBoundingClientRect();
+                    
+                    console.log('📐 Container Größe:', rect.width, 'x', rect.height);
+                    
+                    // Setze Canvas-Größe
+                    this.canvas.width = rect.width;
+                    this.canvas.height = rect.height;
+                    
+                    // High-DPI Support
+                    const dpr = window.devicePixelRatio || 1;
+                    this.canvas.width = rect.width * dpr;
+                    this.canvas.height = rect.height * dpr;
+                    this.ctx.scale(dpr, dpr);
+                    
+                    // Style setzen
+                    this.canvas.style.width = rect.width + 'px';
+                    this.canvas.style.height = rect.height + 'px';
+                    
+                    console.log('✅ Canvas initialisiert:', this.canvas.width, 'x', this.canvas.height);
+                } catch (error) {
+                    console.error('❌ Canvas-Initialisierung fehlgeschlagen:', error);
+                }
             }
 
             initializeMap() {
-                this.mapData = [];
-                for (let y = 0; y < this.mapSize; y++) {
-                    this.mapData[y] = [];
-                    for (let x = 0; x < this.mapSize; x++) {
-                        this.mapData[y][x] = {
-                            terrain: 'grass',
-                            explored: true,
-                            unit: null,
-                            building: null
-                        };
-                    }
-                }
-                this.centerCamera();
-                this.updateMapInfo();
-                console.log(`🗺️ Karte initialisiert: ${this.mapSize}x${this.mapSize} = ${this.mapSize * this.mapSize} Felder`);
-            }
-
-            generateGameMap() {
-                console.log('🗺️ Starte Karten-Generierung...');
-                
-                // Einfache, sichtbare Testmuster erstellen
-                for (let y = 0; y < this.mapSize; y++) {
-                    for (let x = 0; x < this.mapSize; x++) {
-                        // Erstelle ein Schachbrettmuster für Test
-                        if ((x + y) % 4 === 0) {
-                            this.mapData[y][x].terrain = 'water';
-                        } else if ((x + y) % 4 === 1) {
-                            this.mapData[y][x].terrain = 'forest';
-                        } else if ((x + y) % 4 === 2) {
-                            this.mapData[y][x].terrain = 'mountain';
-                        } else {
-                            this.mapData[y][x].terrain = 'grass';
+                try {
+                    this.mapData = [];
+                    for (let y = 0; y < this.mapSize; y++) {
+                        this.mapData[y] = [];
+                        for (let x = 0; x < this.mapSize; x++) {
+                            this.mapData[y][x] = {
+                                terrain: 'grass',
+                                explored: true,
+                                unit: null,
+                                building: null
+                            };
                         }
                     }
+                    
+                    this.centerCamera();
+                    console.log(`✅ Karte initialisiert: ${this.mapSize}x${this.mapSize} = ${this.mapSize * this.mapSize} Felder`);
+                } catch (error) {
+                    console.error('❌ Map-Initialisierung fehlgeschlagen:', error);
                 }
-                
-                // Füge einige Städte hinzu
-                this.mapData[5][5].terrain = 'city';
-                this.mapData[10][10].terrain = 'castle';
-                this.mapData[15][15].terrain = 'city';
-                
-                console.log('✅ Test-Karte mit Schachbrettmuster generiert');
-                this.updateMapInfo();
+            }
+
+            generateTestMap() {
+                try {
+                    console.log('🎨 Generiere Test-Karte mit buntem Muster...');
+                    
+                    // Erstelle ein sichtbares buntes Muster
+                    for (let y = 0; y < this.mapSize; y++) {
+                        for (let x = 0; x < this.mapSize; x++) {
+                            const pattern = (x + y) % 7;
+                            
+                            switch (pattern) {
+                                case 0:
+                                    this.mapData[y][x].terrain = 'grass';
+                                    break;
+                                case 1:
+                                    this.mapData[y][x].terrain = 'forest';
+                                    break;
+                                case 2:
+                                    this.mapData[y][x].terrain = 'water';
+                                    break;
+                                case 3:
+                                    this.mapData[y][x].terrain = 'mountain';
+                                    break;
+                                case 4:
+                                    this.mapData[y][x].terrain = 'swamp';
+                                    break;
+                                case 5:
+                                    this.mapData[y][x].terrain = 'city';
+                                    break;
+                                case 6:
+                                    this.mapData[y][x].terrain = 'castle';
+                                    break;
+                            }
+                        }
+                    }
+                    
+                    console.log('✅ Test-Karte mit buntem Muster generiert');
+                    this.updateMapInfo();
+                } catch (error) {
+                    console.error('❌ Karten-Generierung fehlgeschlagen:', error);
+                }
             }
 
             setupEventListeners() {
-                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-                this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
-                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-                window.addEventListener('resize', () => this.initializeCanvas());
-                window.addEventListener('keydown', (e) => this.onKeyDown(e));
+                try {
+                    // Canvas Events
+                    this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                    this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                    this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                    this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
+                    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+                    
+                    // Window Events
+                    window.addEventListener('resize', () => {
+                        console.log('🔄 Window resize');
+                        this.initializeCanvas();
+                        this.render();
+                    });
+                    
+                    window.addEventListener('keydown', (e) => this.onKeyDown(e));
+                    
+                    console.log('✅ Event Listeners eingerichtet');
+                } catch (error) {
+                    console.error('❌ Event Listener Setup fehlgeschlagen:', error);
+                }
             }
 
             onMouseDown(e) {
@@ -482,7 +448,7 @@
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
                 
-                if (e.button === 2) {
+                if (e.button === 2) { // Rechtsklick
                     this.isDragging = true;
                     this.lastMousePos = { x, y };
                 }
@@ -504,6 +470,7 @@
                     this.render();
                 }
                 
+                // Update Koordinaten-Anzeige
                 const gridPos = this.screenToGrid(x, y);
                 this.updateCoordinatesDisplay(gridPos.x, gridPos.y);
             }
@@ -586,32 +553,43 @@
             }
 
             centerCamera() {
-                const canvasRect = this.canvas.getBoundingClientRect();
+                const rect = this.canvas.getBoundingClientRect();
                 const mapPixelWidth = this.mapSize * this.tileSize;
                 const mapPixelHeight = this.mapSize * this.tileSize;
                 
-                this.camera.x = (mapPixelWidth / 2) - (canvasRect.width / 2 / this.camera.zoom);
-                this.camera.y = (mapPixelHeight / 2) - (canvasRect.height / 2 / this.camera.zoom);
+                this.camera.x = (mapPixelWidth / 2) - (rect.width / 2 / this.camera.zoom);
+                this.camera.y = (mapPixelHeight / 2) - (rect.height / 2 / this.camera.zoom);
             }
 
             render() {
-                const canvasRect = this.canvas.getBoundingClientRect();
-                this.ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
-                
-                const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
-                const startY = Math.max(0, Math.floor(this.camera.y / this.tileSize) - 1);
-                const endX = Math.min(this.mapSize, startX + Math.ceil(canvasRect.width / (this.tileSize * this.camera.zoom)) + 2);
-                const endY = Math.min(this.mapSize, startY + Math.ceil(canvasRect.height / (this.tileSize * this.camera.zoom)) + 2);
-                
-                let tilesRendered = 0;
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
-                        this.renderTile(x, y);
-                        tilesRendered++;
+                try {
+                    const rect = this.canvas.getBoundingClientRect();
+                    
+                    // Canvas leeren
+                    this.ctx.clearRect(0, 0, rect.width, rect.height);
+                    
+                    // Sichtbaren Bereich berechnen
+                    const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
+                    const startY = Math.max(0, Math.floor(this.camera.y / this.tileSize) - 1);
+                    const endX = Math.min(this.mapSize, startX + Math.ceil(rect.width / (this.tileSize * this.camera.zoom)) + 2);
+                    const endY = Math.min(this.mapSize, startY + Math.ceil(rect.height / (this.tileSize * this.camera.zoom)) + 2);
+                    
+                    // Tiles rendern
+                    let tilesRendered = 0;
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            this.renderTile(x, y);
+                            tilesRendered++;
+                        }
                     }
+                    
+                    // Grid rendern
+                    this.renderGrid(startX, startY, endX, endY);
+                    
+                    console.log(`🎨 Render: ${tilesRendered} Tiles, Bereich: (${startX},${startY}) bis (${endX},${endY})`);
+                } catch (error) {
+                    console.error('❌ Render-Fehler:', error);
                 }
-                
-                this.renderGrid(startX, startY, endX, endY);
             }
 
             renderTile(gridX, gridY) {
@@ -619,21 +597,23 @@
                 
                 const tile = this.mapData[gridY][gridX];
                 const terrain = this.terrainTypes[tile.terrain];
+                if (!terrain) return;
+                
                 const screenPos = this.gridToScreen(gridX, gridY);
                 const size = this.tileSize * this.camera.zoom;
                 
+                // Terrain-Farbe rendern
                 this.ctx.fillStyle = terrain.color;
                 this.ctx.fillRect(screenPos.x, screenPos.y, size, size);
                 
-                TerrainRenderer.renderTexture(this.ctx, screenPos.x, screenPos.y, size, terrain.texture);
-                
+                // Symbol rendern (wenn groß genug)
                 if (this.camera.zoom >= 0.8 && terrain.symbol) {
-                    this.ctx.font = `${size * 0.6}px Arial`;
+                    this.ctx.font = `${Math.max(12, size * 0.5)}px Arial`;
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
                     this.ctx.fillStyle = 'white';
                     this.ctx.strokeStyle = 'black';
-                    this.ctx.lineWidth = 1;
+                    this.ctx.lineWidth = 2;
                     
                     const centerX = screenPos.x + size / 2;
                     const centerY = screenPos.y + size / 2;
@@ -650,12 +630,14 @@
                 this.ctx.lineWidth = 1;
                 this.ctx.beginPath();
                 
+                // Vertikale Linien
                 for (let x = startX; x <= endX; x++) {
                     const screenPos = this.gridToScreen(x, 0);
                     this.ctx.moveTo(screenPos.x, 0);
                     this.ctx.lineTo(screenPos.x, this.canvas.height);
                 }
                 
+                // Horizontale Linien
                 for (let y = startY; y <= endY; y++) {
                     const screenPos = this.gridToScreen(0, y);
                     this.ctx.moveTo(0, screenPos.y);
@@ -664,6 +646,10 @@
                 
                 this.ctx.stroke();
             }
+
+            // ========================================
+            // PUBLIC METHODS
+            // ========================================
 
             zoomIn() {
                 console.log('🔍 Zoom In');
@@ -684,6 +670,12 @@
                 this.render();
             }
 
+            regenerateMap() {
+                console.log('🎲 Regeneriere Karte');
+                this.generateTestMap();
+                this.render();
+            }
+
             returnToLobby() {
                 if (confirm('🚪 Zur Lobby zurückkehren?\n\nDer Spielfortschritt geht verloren!')) {
                     window.location.href = '/';
@@ -694,6 +686,8 @@
                 const currentPlayerName = this.gameSettings.currentPlayer?.name || 'Unbekannt';
                 const cityCount = this.countTerrain('city');
                 const castleCount = this.countTerrain('castle');
+                const waterCount = this.countTerrain('water');
+                const mountainCount = this.countTerrain('mountain');
                 
                 document.getElementById('mapInfo').innerHTML = `
                     <strong>Spiel-Info:</strong><br>
@@ -703,7 +697,9 @@
                     <strong>Karten-Info:</strong><br>
                     Größe: ${this.mapSize}x${this.mapSize}<br>
                     Städte: ${cityCount}<br>
-                    Burgen: ${castleCount}
+                    Burgen: ${castleCount}<br>
+                    Wasser: ${waterCount}<br>
+                    Berge: ${mountainCount}
                 `;
             }
 
@@ -721,6 +717,8 @@
 
             updateCoordinatesDisplay(gridX, gridY) {
                 const coords = document.getElementById('coordinates');
+                if (!coords) return;
+                
                 const terrainType = this.isValidGridPosition(gridX, gridY) ? 
                     this.mapData[gridY][gridX].terrain : 'außerhalb';
                 const terrainName = this.terrainTypes[terrainType]?.name || terrainType;
@@ -734,7 +732,7 @@
         }
 
         // ========================================
-        // INITIALISIERUNG
+        // UTILITY FUNCTIONS
         // ========================================
         
         function getGameSettingsFromURL() {
@@ -743,12 +741,15 @@
             
             if (settingsParam) {
                 try {
-                    return JSON.parse(decodeURIComponent(settingsParam));
+                    const settings = JSON.parse(decodeURIComponent(settingsParam));
+                    console.log('✅ Spiel-Einstellungen aus URL geladen:', settings);
+                    return settings;
                 } catch (e) {
-                    console.error('Fehler beim Laden der Spiel-Einstellungen:', e);
+                    console.error('❌ Fehler beim Laden der Spiel-Einstellungen:', e);
                 }
             }
             
+            console.log('⚠️ Keine URL-Parameter gefunden, verwende Demo-Daten');
             return {
                 gameId: 'demo-game',
                 mapSize: 30,
@@ -759,14 +760,40 @@
             };
         }
 
-        // Globale Variable
+        // ========================================
+        // GLOBAL VARIABLES & INITIALIZATION
+        // ========================================
+        
         let mapSystem = null;
 
-        // Initialisierung wenn Seite geladen ist
-        window.addEventListener('load', function() {
-            console.log('🚀 Seite geladen, starte Spiel...');
+        // Initialisierung wenn DOM vollständig geladen ist
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('📄 DOM geladen');
             
-            const gameSettings = getGameSettingsFromURL();
-            console.log('⚙️ Spiel-Einstellungen:', gameSettings);
-            
-            //
+            // Warte kurz für vollständiges Layout
+            setTimeout(() => {
+                console.log('🚀 Starte Spiel-Initialisierung...');
+                
+                try {
+                    // Lade Spiel-Einstellungen
+                    const gameSettings = getGameSettingsFromURL();
+                    
+                    // Erstelle MapSystem
+                    console.log('🗺️ Erstelle MapSystem...');
+                    mapSystem = new MapSystem(gameSettings);
+                    
+                    // Button Events einrichten
+                    console.log('🎮 Verbinde Button-Events...');
+                    setupButtonEvents();
+                    
+                    // Willkommens-Nachricht
+                    setTimeout(() => {
+                        const playerName = gameSettings.currentPlayer?.name || 'Unbekannt';
+                        console.log(`🎮 Willkommen ${playerName}!`);
+                        alert(`🎮 Spiel gestartet!\n\nWillkommen ${playerName}!\nKarte: ${gameSettings.mapSize}x${gameSettings.mapSize}\nSpieler: ${gameSettings.playerCount}`);
+                    }, 1000);
+                    
+                    console.log('✅ Spiel erfolgreich initialisiert!');
+                } catch (error) {
+                    console.error('❌ Initialisierung fehlgeschlagen:', error);
+                    alert('Fehler beim Laden des Spielfelds:\n' + error.message + '\n\nBitte laden Sie die Seite neu
