@@ -1,0 +1,609 @@
+// races-data.json - Externe Rassen-Definitionen
+{
+  "version": "1.0.0",
+  "lastUpdated": "2024-01-15",
+  "races": [
+    {
+      "id": "humans",
+      "name": "Menschen",
+      "icon": "👑",
+      "description": "Vielseitige und anpassungsfähige Rasse mit ausgewogenen Einheiten",
+      "color": "#3498db",
+      "specialAbility": "Zusätzliches Gold aus Städten (+1 Gold pro Stadt)",
+      "startingGold": 120,
+      "goldMultiplier": 1.2,
+      "units": [
+        {
+          "id": "peasant",
+          "name": "Bauer",
+          "icon": "👨‍🌾",
+          "description": "Billige Grundeinheit",
+          "baseStats": {
+            "hp": 30,
+            "attack": 8,
+            "defense": 5,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 15,
+          "upgradeCost": 10,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "swordsman",
+          "name": "Schwertkämpfer",
+          "icon": "⚔️",
+          "description": "Nahkampf-Spezialist",
+          "baseStats": {
+            "hp": 50,
+            "attack": 15,
+            "defense": 12,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 30,
+          "upgradeCost": 20,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "archer",
+          "name": "Bogenschütze",
+          "icon": "🏹",
+          "description": "Fernkampf-Einheit",
+          "baseStats": {
+            "hp": 35,
+            "attack": 12,
+            "defense": 6,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 3,
+          "cost": 25,
+          "upgradeCost": 18,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "knight",
+          "name": "Ritter",
+          "icon": "🐎",
+          "description": "Schwere Kavallerie",
+          "baseStats": {
+            "hp": 70,
+            "attack": 20,
+            "defense": 18,
+            "movement": 4
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 50,
+          "upgradeCost": 35,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "mage",
+          "name": "Magier",
+          "icon": "🧙‍♂️",
+          "description": "Magische Fernkampf-Einheit",
+          "baseStats": {
+            "hp": 30,
+            "attack": 18,
+            "defense": 4,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 2,
+          "cost": 40,
+          "upgradeCost": 30,
+          "maxLevel": 5,
+          "abilities": ["magic_damage"]
+        },
+        {
+          "id": "paladin",
+          "name": "Paladin",
+          "icon": "⚡",
+          "description": "Elite-Krieger mit Heilfähigkeiten",
+          "baseStats": {
+            "hp": 80,
+            "attack": 22,
+            "defense": 20,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 70,
+          "upgradeCost": 50,
+          "maxLevel": 5,
+          "abilities": ["heal"]
+        },
+        {
+          "id": "crossbowman",
+          "name": "Armbrustschütze",
+          "icon": "🎯",
+          "description": "Verbesserte Fernkampf-Einheit",
+          "baseStats": {
+            "hp": 45,
+            "attack": 16,
+            "defense": 8,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 4,
+          "cost": 35,
+          "upgradeCost": 25,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "catapult",
+          "name": "Katapult",
+          "icon": "🏗️",
+          "description": "Belagerungswaffe",
+          "baseStats": {
+            "hp": 40,
+            "attack": 30,
+            "defense": 10,
+            "movement": 1
+          },
+          "movementType": "ground",
+          "attackRange": 5,
+          "cost": 60,
+          "upgradeCost": 40,
+          "maxLevel": 5,
+          "abilities": ["siege"]
+        },
+        {
+          "id": "priest",
+          "name": "Priester",
+          "icon": "⛪",
+          "description": "Unterstützungseinheit",
+          "baseStats": {
+            "hp": 40,
+            "attack": 8,
+            "defense": 12,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 45,
+          "upgradeCost": 30,
+          "maxLevel": 5,
+          "abilities": ["heal", "buff"]
+        },
+        {
+          "id": "angel",
+          "name": "Engel",
+          "icon": "👼",
+          "description": "Fliegende Elite-Einheit",
+          "baseStats": {
+            "hp": 60,
+            "attack": 25,
+            "defense": 15,
+            "movement": 5
+          },
+          "movementType": "flying",
+          "attackRange": 1,
+          "cost": 100,
+          "upgradeCost": 70,
+          "maxLevel": 5,
+          "abilities": ["flying", "divine"]
+        }
+      ]
+    },
+    {
+      "id": "orcs",
+      "name": "Orks",
+      "icon": "👹",
+      "description": "Brutale Krieger mit starken Nahkampf-Einheiten",
+      "color": "#e74c3c",
+      "specialAbility": "Bonus-Angriff nach einem Sieg (+2 Angriff für 1 Runde)",
+      "startingGold": 100,
+      "goldMultiplier": 1.0,
+      "units": [
+        {
+          "id": "goblin",
+          "name": "Goblin",
+          "icon": "👺",
+          "description": "Schwache aber billige Einheit",
+          "baseStats": {
+            "hp": 25,
+            "attack": 10,
+            "defense": 3,
+            "movement": 4
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 12,
+          "upgradeCost": 8,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "orc_warrior",
+          "name": "Ork-Krieger",
+          "icon": "⚔️",
+          "description": "Starker Nahkämpfer",
+          "baseStats": {
+            "hp": 60,
+            "attack": 18,
+            "defense": 10,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 28,
+          "upgradeCost": 20,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "orc_berserker",
+          "name": "Berserker",
+          "icon": "🪓",
+          "description": "Rasender Kämpfer",
+          "baseStats": {
+            "hp": 55,
+            "attack": 22,
+            "defense": 6,
+            "movement": 4
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 35,
+          "upgradeCost": 25,
+          "maxLevel": 5,
+          "abilities": ["berserker_rage"]
+        },
+        {
+          "id": "orc_shaman",
+          "name": "Schamane",
+          "icon": "🔮",
+          "description": "Orkischer Magier",
+          "baseStats": {
+            "hp": 35,
+            "attack": 16,
+            "defense": 5,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 2,
+          "cost": 38,
+          "upgradeCost": 28,
+          "maxLevel": 5,
+          "abilities": ["dark_magic"]
+        },
+        {
+          "id": "troll",
+          "name": "Troll",
+          "icon": "🧌",
+          "description": "Riesige Kreatur mit Regeneration",
+          "baseStats": {
+            "hp": 100,
+            "attack": 25,
+            "defense": 15,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 65,
+          "upgradeCost": 45,
+          "maxLevel": 5,
+          "abilities": ["regeneration"]
+        },
+        {
+          "id": "wolf_rider",
+          "name": "Wolfsreiter",
+          "icon": "🐺",
+          "description": "Schnelle Kavallerie",
+          "baseStats": {
+            "hp": 45,
+            "attack": 16,
+            "defense": 8,
+            "movement": 5
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 42,
+          "upgradeCost": 30,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "orc_archer",
+          "name": "Ork-Bogenschütze",
+          "icon": "🏹",
+          "description": "Grober Fernkämpfer",
+          "baseStats": {
+            "hp": 40,
+            "attack": 14,
+            "defense": 6,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 3,
+          "cost": 26,
+          "upgradeCost": 18,
+          "maxLevel": 5,
+          "abilities": []
+        },
+        {
+          "id": "war_chief",
+          "name": "Kriegshäuptling",
+          "icon": "👑",
+          "description": "Anführer der Ork-Horde",
+          "baseStats": {
+            "hp": 90,
+            "attack": 28,
+            "defense": 20,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 80,
+          "upgradeCost": 55,
+          "maxLevel": 5,
+          "abilities": ["leadership", "intimidate"]
+        },
+        {
+          "id": "catapult_orc",
+          "name": "Ork-Katapult",
+          "icon": "💥",
+          "description": "Zerstörerische Belagerungswaffe",
+          "baseStats": {
+            "hp": 35,
+            "attack": 35,
+            "defense": 8,
+            "movement": 1
+          },
+          "movementType": "ground",
+          "attackRange": 4,
+          "cost": 55,
+          "upgradeCost": 38,
+          "maxLevel": 5,
+          "abilities": ["siege", "splash_damage"]
+        },
+        {
+          "id": "wyvern",
+          "name": "Wyvern",
+          "icon": "🐉",
+          "description": "Fliegender Drache",
+          "baseStats": {
+            "hp": 75,
+            "attack": 30,
+            "defense": 12,
+            "movement": 6
+          },
+          "movementType": "flying",
+          "attackRange": 1,
+          "cost": 120,
+          "upgradeCost": 80,
+          "maxLevel": 5,
+          "abilities": ["flying", "fire_breath"]
+        }
+      ]
+    },
+    {
+      "id": "elves",
+      "name": "Elfen",
+      "icon": "🧝‍♀️",
+      "description": "Geschickte Bogenschützen und Naturmagier",
+      "color": "#27ae60",
+      "specialAbility": "Bewegungsbonus in Wäldern (+1 Bewegung)",
+      "startingGold": 110,
+      "goldMultiplier": 1.1,
+      "units": [
+        {
+          "id": "elf_scout",
+          "name": "Elf-Späher",
+          "icon": "🕵️‍♀️",
+          "description": "Schnelle Aufklärer",
+          "baseStats": {
+            "hp": 30,
+            "attack": 10,
+            "defense": 8,
+            "movement": 4
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 18,
+          "upgradeCost": 12,
+          "maxLevel": 5,
+          "abilities": ["stealth"]
+        },
+        {
+          "id": "elf_archer",
+          "name": "Elf-Bogenschütze",
+          "icon": "🏹",
+          "description": "Präzise Fernkämpfer",
+          "baseStats": {
+            "hp": 35,
+            "attack": 16,
+            "defense": 6,
+            "movement": 3
+          },
+          "movementType": "ground",
+          "attackRange": 4,
+          "cost": 28,
+          "upgradeCost": 20,
+          "maxLevel": 5,
+          "abilities": ["precision"]
+        },
+        {
+          "id": "druid",
+          "name": "Druide",
+          "icon": "🌿",
+          "description": "Naturmagier",
+          "baseStats": {
+            "hp": 40,
+            "attack": 14,
+            "defense": 8,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 2,
+          "cost": 35,
+          "upgradeCost": 25,
+          "maxLevel": 5,
+          "abilities": ["nature_magic", "heal"]
+        },
+        {
+          "id": "tree_ent",
+          "name": "Baumhirte",
+          "icon": "🌳",
+          "description": "Lebender Baum",
+          "baseStats": {
+            "hp": 120,
+            "attack": 20,
+            "defense": 25,
+            "movement": 1
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 70,
+          "upgradeCost": 50,
+          "maxLevel": 5,
+          "abilities": ["rooted", "nature_resistance"]
+        },
+        {
+          "id": "unicorn",
+          "name": "Einhorn",
+          "icon": "🦄",
+          "description": "Magisches Reittier",
+          "baseStats": {
+            "hp": 50,
+            "attack": 18,
+            "defense": 12,
+            "movement": 5
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 55,
+          "upgradeCost": 40,
+          "maxLevel": 5,
+          "abilities": ["magic_immunity", "heal"]
+        },
+        {
+          "id": "eagle_rider",
+          "name": "Adlerreiter",
+          "icon": "🦅",
+          "description": "Fliegende Späher",
+          "baseStats": {
+            "hp": 40,
+            "attack": 14,
+            "defense": 8,
+            "movement": 6
+          },
+          "movementType": "flying",
+          "attackRange": 1,
+          "cost": 45,
+          "upgradeCost": 32,
+          "maxLevel": 5,
+          "abilities": ["flying", "reconnaissance"]
+        },
+        {
+          "id": "elf_mage",
+          "name": "Elf-Magier",
+          "icon": "🧙‍♀️",
+          "description": "Mächtiger Zauberer",
+          "baseStats": {
+            "hp": 35,
+            "attack": 20,
+            "defense": 6,
+            "movement": 2
+          },
+          "movementType": "ground",
+          "attackRange": 3,
+          "cost": 48,
+          "upgradeCost": 35,
+          "maxLevel": 5,
+          "abilities": ["elemental_magic"]
+        },
+        {
+          "id": "ranger",
+          "name": "Waldläufer",
+          "icon": "🏹",
+          "description": "Elite-Bogenschütze",
+          "baseStats": {
+            "hp": 45,
+            "attack": 22,
+            "defense": 10,
+            "movement": 4
+          },
+          "movementType": "ground",
+          "attackRange": 5,
+          "cost": 50,
+          "upgradeCost": 38,
+          "maxLevel": 5,
+          "abilities": ["multishot", "forest_mastery"]
+        },
+        {
+          "id": "phoenix",
+          "name": "Phönix",
+          "icon": "🔥",
+          "description": "Wiedergeborener Feuervogel",
+          "baseStats": {
+            "hp": 60,
+            "attack": 28,
+            "defense": 10,
+            "movement": 7
+          },
+          "movementType": "flying",
+          "attackRange": 2,
+          "cost": 90,
+          "upgradeCost": 65,
+          "maxLevel": 5,
+          "abilities": ["flying", "rebirth", "fire_damage"]
+        },
+        {
+          "id": "ancient_guardian",
+          "name": "Uralter Wächter",
+          "icon": "🗿",
+          "description": "Steinerner Beschützer",
+          "baseStats": {
+            "hp": 150,
+            "attack": 25,
+            "defense": 30,
+            "movement": 1
+          },
+          "movementType": "ground",
+          "attackRange": 1,
+          "cost": 100,
+          "upgradeCost": 70,
+          "maxLevel": 5,
+          "abilities": ["ancient_power", "stone_skin"]
+        }
+      ]
+    }
+  ],
+  "abilities": {
+    "magic_damage": {
+      "name": "Magischer Schaden",
+      "description": "Ignoriert Rüstung teilweise"
+    },
+    "heal": {
+      "name": "Heilung",
+      "description": "Kann andere Einheiten heilen"
+    },
+    "flying": {
+      "name": "Fliegend",
+      "description": "Kann über Hindernisse fliegen"
+    },
+    "siege": {
+      "name": "Belagerung",
+      "description": "Bonus-Schaden gegen Gebäude"
+    },
+    "stealth": {
+      "name": "Tarnung",
+      "description": "Schwerer zu entdecken"
+    },
+    "regeneration": {
+      "name": "Regeneration",
+      "description": "Heilt sich selbst jede Runde"
+    }
+  }
+}
