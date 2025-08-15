@@ -1,197 +1,6 @@
-// map-system.js - Karten-Rendering und Interaktion (Komplett)
+// map-system.js - Karten-Rendering und Interaktion (Komplett überarbeitet)
 
 console.log('🗺️ Initialisiere Map System...');
-
-// ========================================
-// TERRAIN DEFINITIONS
-// ========================================
-
-const TERRAIN_DEFINITIONS = {
-    grass: {
-        name: 'Wiese',
-        color: '#27ae60',
-        movementCost: { ground: 1, flying: 1, naval: -1 },
-        symbol: '🌱',
-        goldIncome: 0,
-        defensiveBonus: 0
-    },
-    forest: {
-        name: 'Wald',
-        color: '#229954',
-        movementCost: { ground: 2, flying: 1, naval: -1 },
-        symbol: '🌲',
-        goldIncome: 0,
-        defensiveBonus: 1
-    },
-    mountain: {
-        name: 'Berge',
-        color: '#95a5a6',
-        movementCost: { ground: 3, flying: 1, naval: -1 },
-        symbol: '⛰️',
-        goldIncome: 0,
-        defensiveBonus: 2
-    },
-    swamp: {
-        name: 'Sumpf',
-        color: '#8b4513',
-        movementCost: { ground: 3, flying: 1, naval: 1 },
-        symbol: '🐸',
-        goldIncome: 0,
-        defensiveBonus: -1
-    },
-    water: {
-        name: 'Wasser',
-        color: '#3498db',
-        movementCost: { ground: -1, flying: 1, naval: 1 },
-        symbol: '💧',
-        goldIncome: 0,
-        defensiveBonus: 0
-    },
-    desert: {
-        name: 'Wüste',
-        color: '#f4d03f',
-        movementCost: { ground: 2, flying: 1, naval: -1 },
-        symbol: '🏜️',
-        goldIncome: 0,
-        defensiveBonus: 0
-    },
-    road: {
-        name: 'Straße',
-        color: '#7f8c8d',
-        movementCost: { ground: 0.5, flying: 1, naval: -1 },
-        symbol: '🛤️',
-        goldIncome: 0,
-        defensiveBonus: 0
-    },
-    bridge: {
-        name: 'Brücke',
-        color: '#8d6e63',
-        movementCost: { ground: 1, flying: 1, naval: 1 },
-        symbol: '🌉',
-        goldIncome: 0,
-        defensiveBonus: 0
-    },
-    city: {
-        name: 'Stadt',
-        color: '#e67e22',
-        movementCost: { ground: 1, flying: 1, naval: -1 },
-        symbol: '🏘️',
-        goldIncome: 3,
-        defensiveBonus: 1,
-        capturable: true,
-        recruitable: true
-    },
-    castle: {
-        name: 'Burg',
-        color: '#9b59b6',
-        movementCost: { ground: 1, flying: 1, naval: -1 },
-        symbol: '🏰',
-        goldIncome: 5,
-        defensiveBonus: 3,
-        capturable: true,
-        recruitable: true
-    },
-    village: {
-        name: 'Dorf',
-        color: '#d68910',
-        movementCost: { ground: 1, flying: 1, naval: -1 },
-        symbol: '🏡',
-        goldIncome: 1,
-        defensiveBonus: 0,
-        capturable: true
-    },
-    tower: {
-        name: 'Turm',
-        color: '#5d4e75',
-        movementCost: { ground: 1, flying: 1, naval: -1 },
-        symbol: '🗼',
-        goldIncome: 2,
-        defensiveBonus: 2,
-        capturable: true
-    }
-};
-
-// ========================================
-// GAME CONFIG
-// ========================================
-
-const GAME_CONFIG = {
-    DEFAULT_MAP_SIZE: 30,
-    TILE_SIZE: 32,
-    DEFAULT_ZOOM: 1.0,
-    MIN_ZOOM: 0.3,
-    MAX_ZOOM: 3.0,
-    ZOOM_FACTOR: 1.2,
-    PAN_SPEED: 50
-};
-
-// ========================================
-// GAME UTILS
-// ========================================
-
-const GameUtils = {
-    clamp: (value, min, max) => Math.min(Math.max(value, min), max),
-    
-    isValidPosition: (x, y, mapSize) => x >= 0 && x < mapSize && y >= 0 && y < mapSize,
-    
-    distance: (x1, y1, x2, y2) => Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2),
-    
-    debounce: (func, delay) => {
-        let timeoutId;
-        return (...args) => {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(() => func.apply(null, args), delay);
-        };
-    }
-};
-
-// ========================================
-// GAME STATE MANAGER
-// ========================================
-
-class GameState {
-    constructor() {
-        this.data = {
-            selectedTile: null,
-            selectedUnit: null,
-            playerUnits: [],
-            mapData: null,
-            currentPlayer: null,
-            isMyTurn: false,
-            selectedRace: null
-        };
-        this.listeners = {};
-    }
-
-    on(event, callback) {
-        if (!this.listeners[event]) {
-            this.listeners[event] = [];
-        }
-        this.listeners[event].push(callback);
-    }
-
-    emit(event, data) {
-        if (this.listeners[event]) {
-            this.listeners[event].forEach(callback => callback(data));
-        }
-    }
-
-    selectTile(x, y) {
-        this.data.selectedTile = { x, y };
-        this.emit('selectedTileChanged', this.data.selectedTile);
-    }
-
-    selectUnit(unit) {
-        this.data.selectedUnit = unit;
-        this.emit('selectedUnitChanged', unit);
-    }
-
-    setMapData(mapData) {
-        this.data.mapData = mapData;
-    }
-}
-
-const gameState = new GameState();
 
 // ========================================
 // MAP SYSTEM CLASS
@@ -301,7 +110,11 @@ class MapSystem {
             }
         }
         
-        gameState.setMapData(this.mapData);
+        // Set map data in game state
+        if (window.gameState) {
+            gameState.setMapData(this.mapData);
+        }
+        
         console.log(`🗺️ Karte initialisiert: ${this.mapSize}x${this.mapSize} = ${this.mapSize * this.mapSize} Felder`);
     }
 
@@ -315,9 +128,9 @@ class MapSystem {
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
         
         // Touch Events for mobile
-        this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e));
-        this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e));
-        this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e));
+        this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
         
         // Keyboard Events
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -329,13 +142,17 @@ class MapSystem {
         window.addEventListener('unitMoved', (e) => this.onUnitMoved(e.detail));
         window.addEventListener('unitAttacked', (e) => this.onUnitAttacked(e.detail));
         window.addEventListener('gameStarted', (e) => this.onGameStarted(e.detail));
+        window.addEventListener('turnChanged', (e) => this.onTurnChanged(e.detail));
     }
 
     setupGameStateListeners() {
-        gameState.on('selectedUnitChanged', () => this.markForRedraw());
-        gameState.on('selectedTileChanged', () => this.markForRedraw());
-        gameState.on('playerUnitsChanged', () => this.markForRedraw());
-        gameState.on('isMyTurnChanged', () => this.markForRedraw());
+        if (window.gameState) {
+            gameState.on('selectedUnitChanged', () => this.markForRedraw());
+            gameState.on('selectedTileChanged', () => this.markForRedraw());
+            gameState.on('playerUnitsChanged', () => this.markForRedraw());
+            gameState.on('isMyTurnChanged', () => this.markForRedraw());
+            gameState.on('mapDataChanged', () => this.markForRedraw());
+        }
     }
 
     // ========================================
@@ -357,6 +174,7 @@ class MapSystem {
         this.smoothTerrain();
         
         this.markForRedraw();
+        this.updateMapInfo();
         console.log('✅ Karte generiert');
     }
 
@@ -386,7 +204,7 @@ class MapSystem {
 
     generateWater() {
         // Generate water bodies
-        const waterSources = Math.floor(this.mapSize / 15);
+        const waterSources = Math.max(1, Math.floor(this.mapSize / 15));
         
         for (let i = 0; i < waterSources; i++) {
             const centerX = Math.floor(Math.random() * this.mapSize);
@@ -399,7 +217,7 @@ class MapSystem {
 
     generateMountains() {
         // Generate mountain ranges
-        const mountainChains = Math.floor(this.mapSize / 20);
+        const mountainChains = Math.max(1, Math.floor(this.mapSize / 20));
         
         for (let i = 0; i < mountainChains; i++) {
             const startX = Math.floor(Math.random() * this.mapSize);
@@ -412,7 +230,7 @@ class MapSystem {
 
     generateForests() {
         // Generate forest patches
-        const forestPatches = Math.floor(this.mapSize / 8);
+        const forestPatches = Math.max(2, Math.floor(this.mapSize / 8));
         
         for (let i = 0; i < forestPatches; i++) {
             const centerX = Math.floor(Math.random() * this.mapSize);
@@ -424,7 +242,7 @@ class MapSystem {
     }
 
     generateBuildings() {
-        // Generate cities and castles
+        // Generate cities and castles based on map size
         const cityCount = Math.max(2, Math.floor(this.mapSize / 15));
         const castleCount = Math.max(1, Math.floor(this.mapSize / 20));
         
@@ -747,18 +565,25 @@ class MapSystem {
         this.markForRedraw();
     }
 
+    onTurnChanged(data) {
+        console.log('🔄 Turn changed, updating map');
+        this.markForRedraw();
+    }
+
     // ========================================
     // TILE SELECTION
     // ========================================
 
     selectTile(x, y) {
-        gameState.selectTile(x, y);
-        
-        const tile = this.getTile(x, y);
-        if (tile?.unit) {
-            gameState.selectUnit(tile.unit);
-        } else {
-            gameState.selectUnit(null);
+        if (window.gameState) {
+            gameState.selectTile(x, y);
+            
+            const tile = this.getTile(x, y);
+            if (tile?.unit) {
+                gameState.selectUnit(tile.unit);
+            } else {
+                gameState.selectUnit(null);
+            }
         }
         
         console.log(`🎯 Tile selected: (${x}, ${y})`);
@@ -946,11 +771,13 @@ class MapSystem {
 
     renderUnits(startX, startY, endX, endY) {
         // Render all units in visible area
-        gameState.data.playerUnits.forEach(unit => {
-            if (unit.x >= startX && unit.x < endX && unit.y >= startY && unit.y < endY) {
-                this.renderUnit(unit);
-            }
-        });
+        if (window.gameState && gameState.data.playerUnits) {
+            gameState.data.playerUnits.forEach(unit => {
+                if (unit.x >= startX && unit.x < endX && unit.y >= startY && unit.y < endY) {
+                    this.renderUnit(unit);
+                }
+            });
+        }
     }
 
     renderUnit(unit) {
@@ -958,7 +785,8 @@ class MapSystem {
         const size = this.tileSize * this.camera.zoom;
         
         // Unit background
-        this.ctx.fillStyle = gameState.selectedRace?.color || '#3498db';
+        const raceColor = (window.gameState && gameState.selectedRace?.color) || '#3498db';
+        this.ctx.fillStyle = raceColor;
         this.ctx.globalAlpha = 0.8;
         this.ctx.fillRect(screenPos.x + 2, screenPos.y + 2, size - 4, size - 4);
         this.ctx.globalAlpha = 1.0;
@@ -1008,7 +836,7 @@ class MapSystem {
 
     renderUI(startX, startY, endX, endY) {
         // Render selection highlight
-        const selectedTile = gameState.data.selectedTile;
+        const selectedTile = window.gameState ? gameState.data.selectedTile : null;
         if (selectedTile && this.isValidPosition(selectedTile.x, selectedTile.y)) {
             this.renderSelection(selectedTile.x, selectedTile.y);
         }
@@ -1019,8 +847,9 @@ class MapSystem {
         }
         
         // Render movement/attack ranges if unit selected
-        const selectedUnit = gameState.data.selectedUnit;
-        if (selectedUnit && gameState.data.isMyTurn) {
+        const selectedUnit = window.gameState ? gameState.data.selectedUnit : null;
+        const isMyTurn = window.gameState ? gameState.data.isMyTurn : false;
+        if (selectedUnit && isMyTurn) {
             this.renderUnitRanges(selectedUnit);
         }
     }
@@ -1139,15 +968,16 @@ class MapSystem {
         if (!terrain) return false;
         
         const movementType = unit.definition?.movementType || 'ground';
-        const movementCost = terrain.movementCost[movementType];
+        const movementCost = GameUtils.getMovementCost(tile.terrain, movementType);
         
-        return movementCost >= 0; // -1 means impassable
+        return movementCost !== null && movementCost >= 0; // null or -1 means impassable
     }
 
     getPlayerColor(playerId) {
         // Return color based on player ID
         const colors = ['#3498db', '#e74c3c', '#27ae60', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
-        return colors[playerId % colors.length];
+        const index = typeof playerId === 'string' ? playerId.charCodeAt(0) : playerId;
+        return colors[index % colors.length];
     }
 
     updateCoordinatesDisplay(gridX, gridY) {
@@ -1169,8 +999,8 @@ class MapSystem {
         const debugElement = document.getElementById('debugInfo');
         if (!debugElement) return;
         
-        const selectedUnit = gameState.data.selectedUnit;
-        const selectedTile = gameState.data.selectedTile;
+        const selectedUnit = window.gameState ? gameState.data.selectedUnit : null;
+        const selectedTile = window.gameState ? gameState.data.selectedTile : null;
         
         debugElement.innerHTML = `
             FPS: ${this.fps}<br>
@@ -1247,20 +1077,246 @@ class MapSystem {
         }
     }
 
-    // Cleanup method
+    // Unit placement methods
+    placeUnit(unit, x, y) {
+        if (!this.isValidPosition(x, y)) {
+            console.warn('⚠️ Ungültige Position für Einheit:', x, y);
+            return false;
+        }
+        
+        const tile = this.getTile(x, y);
+        if (tile.unit) {
+            console.warn('⚠️ Tile bereits besetzt:', x, y);
+            return false;
+        }
+        
+        // Update unit position
+        unit.x = x;
+        unit.y = y;
+        
+        // Update tile
+        tile.unit = unit;
+        
+        // Update game state if available
+        if (window.gameState) {
+            gameState.addUnit(unit);
+        }
+        
+        this.markForRedraw();
+        console.log(`✅ Einheit platziert: ${unit.definition?.name} bei (${x}, ${y})`);
+        return true;
+    }
+
+    removeUnit(unit) {
+        if (!unit) return false;
+        
+        const tile = this.getTile(unit.x, unit.y);
+        if (tile && tile.unit === unit) {
+            tile.unit = null;
+        }
+        
+        // Update game state if available
+        if (window.gameState) {
+            gameState.removeUnit(unit.id);
+        }
+        
+        this.markForRedraw();
+        console.log(`➖ Einheit entfernt: ${unit.definition?.name}`);
+        return true;
+    }
+
+    moveUnit(unit, newX, newY) {
+        if (!this.canMoveToTile(unit, newX, newY)) {
+            console.warn('⚠️ Bewegung nicht möglich:', newX, newY);
+            return false;
+        }
+        
+        // Clear old position
+        const oldTile = this.getTile(unit.x, unit.y);
+        if (oldTile) {
+            oldTile.unit = null;
+        }
+        
+        // Set new position
+        unit.x = newX;
+        unit.y = newY;
+        const newTile = this.getTile(newX, newY);
+        if (newTile) {
+            newTile.unit = unit;
+        }
+        
+        // Mark as moved
+        unit.hasMoved = true;
+        
+        // Update game state if available
+        if (window.gameState) {
+            gameState.updateUnit(unit.id, { x: newX, y: newY, hasMoved: true });
+        }
+        
+        this.markForRedraw();
+        console.log(`🚶 Einheit bewegt: ${unit.definition?.name} zu (${newX}, ${newY})`);
+        return true;
+    }
+
+    // Building capture methods
+    captureBuilding(x, y, playerId) {
+        const tile = this.getTile(x, y);
+        if (!tile) return false;
+        
+        const terrain = TERRAIN_DEFINITIONS[tile.terrain];
+        if (!terrain || !terrain.capturable) {
+            console.warn('⚠️ Gebäude nicht eroberbar:', tile.terrain);
+            return false;
+        }
+        
+        tile.owner = playerId;
+        this.markForRedraw();
+        
+        console.log(`🏰 Gebäude erobert: ${terrain.name} bei (${x}, ${y}) von ${playerId}`);
+        return true;
+    }
+
+    // Get terrain info for AI or game logic
+    getTerrainInfo(x, y) {
+        const tile = this.getTile(x, y);
+        if (!tile) return null;
+        
+        const terrain = TERRAIN_DEFINITIONS[tile.terrain];
+        if (!terrain) return null;
+        
+        return {
+            type: tile.terrain,
+            name: terrain.name,
+            movementCost: terrain.movementCost,
+            goldIncome: terrain.goldIncome || 0,
+            defensiveBonus: terrain.defensiveBonus || 0,
+            capturable: terrain.capturable || false,
+            owner: tile.owner
+        };
+    }
+
+    // Path finding helper
+    findPath(fromX, fromY, toX, toY, unit) {
+        // Simple A* pathfinding implementation
+        // This is a basic version - can be enhanced for better performance
+        const openSet = [{ x: fromX, y: fromY, g: 0, h: this.heuristic(fromX, fromY, toX, toY), f: 0 }];
+        const closedSet = new Set();
+        const cameFrom = new Map();
+        
+        openSet[0].f = openSet[0].g + openSet[0].h;
+        
+        while (openSet.length > 0) {
+            // Find node with lowest f score
+            let current = openSet[0];
+            let currentIndex = 0;
+            
+            for (let i = 1; i < openSet.length; i++) {
+                if (openSet[i].f < current.f) {
+                    current = openSet[i];
+                    currentIndex = i;
+                }
+            }
+            
+            // Remove current from open set
+            openSet.splice(currentIndex, 1);
+            closedSet.add(`${current.x},${current.y}`);
+            
+            // Check if we reached the goal
+            if (current.x === toX && current.y === toY) {
+                return this.reconstructPath(cameFrom, current);
+            }
+            
+            // Check neighbors
+            const neighbors = [
+                { x: current.x + 1, y: current.y },
+                { x: current.x - 1, y: current.y },
+                { x: current.x, y: current.y + 1 },
+                { x: current.x, y: current.y - 1 }
+            ];
+            
+            for (const neighbor of neighbors) {
+                if (!this.isValidPosition(neighbor.x, neighbor.y)) continue;
+                if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+                if (!this.canMoveToTile(unit, neighbor.x, neighbor.y)) continue;
+                
+                const movementCost = this.getMovementCostForTile(neighbor.x, neighbor.y, unit);
+                const tentativeG = current.g + movementCost;
+                
+                const existingNode = openSet.find(node => node.x === neighbor.x && node.y === neighbor.y);
+                
+                if (!existingNode) {
+                    const newNode = {
+                        x: neighbor.x,
+                        y: neighbor.y,
+                        g: tentativeG,
+                        h: this.heuristic(neighbor.x, neighbor.y, toX, toY),
+                        f: 0
+                    };
+                    newNode.f = newNode.g + newNode.h;
+                    openSet.push(newNode);
+                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+                } else if (tentativeG < existingNode.g) {
+                    existingNode.g = tentativeG;
+                    existingNode.f = existingNode.g + existingNode.h;
+                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+                }
+            }
+        }
+        
+        return []; // No path found
+    }
+
+    heuristic(x1, y1, x2, y2) {
+        return Math.abs(x1 - x2) + Math.abs(y1 - y2); // Manhattan distance
+    }
+
+    reconstructPath(cameFrom, current) {
+        const path = [{ x: current.x, y: current.y }];
+        let currentKey = `${current.x},${current.y}`;
+        
+        while (cameFrom.has(currentKey)) {
+            current = cameFrom.get(currentKey);
+            path.unshift({ x: current.x, y: current.y });
+            currentKey = `${current.x},${current.y}`;
+        }
+        
+        return path;
+    }
+
+    getMovementCostForTile(x, y, unit) {
+        const tile = this.getTile(x, y);
+        if (!tile) return Infinity;
+        
+        const movementType = unit.definition?.movementType || 'ground';
+        return GameUtils.getMovementCost(tile.terrain, movementType) || 1;
+    }
+
+    // ========================================
+    // CLEANUP METHODS
+    // ========================================
+
     destroy() {
         this.stopRenderLoop();
         
         // Remove event listeners
-        this.canvas.removeEventListener('mousedown', this.onMouseDown);
-        this.canvas.removeEventListener('mousemove', this.onMouseMove);
-        this.canvas.removeEventListener('mouseup', this.onMouseUp);
-        this.canvas.removeEventListener('wheel', this.onWheel);
-        this.canvas.removeEventListener('click', this.onClick);
-        this.canvas.removeEventListener('contextmenu', (e) => e.preventDefault());
+        if (this.canvas) {
+            this.canvas.removeEventListener('mousedown', this.onMouseDown);
+            this.canvas.removeEventListener('mousemove', this.onMouseMove);
+            this.canvas.removeEventListener('mouseup', this.onMouseUp);
+            this.canvas.removeEventListener('wheel', this.onWheel);
+            this.canvas.removeEventListener('click', this.onClick);
+            this.canvas.removeEventListener('contextmenu', (e) => e.preventDefault());
+            this.canvas.removeEventListener('touchstart', this.onTouchStart);
+            this.canvas.removeEventListener('touchmove', this.onTouchMove);
+            this.canvas.removeEventListener('touchend', this.onTouchEnd);
+        }
         
         window.removeEventListener('keydown', this.onKeyDown);
         window.removeEventListener('resize', this.onResize);
+        window.removeEventListener('unitMoved', this.onUnitMoved);
+        window.removeEventListener('unitAttacked', this.onUnitAttacked);
+        window.removeEventListener('gameStarted', this.onGameStarted);
+        window.removeEventListener('turnChanged', this.onTurnChanged);
         
         console.log('🗑️ MapSystem destroyed');
     }
@@ -1274,6 +1330,10 @@ class MapSystem {
 let mapSystemInstance = null;
 
 function initializeMapSystem(gameSettings) {
+    if (mapSystemInstance) {
+        mapSystemInstance.destroy();
+    }
+    
     mapSystemInstance = new MapSystem(gameSettings);
     return mapSystemInstance;
 }
@@ -1286,7 +1346,6 @@ function setupButtonEvents() {
     const zoomInBtn2 = document.getElementById('zoomInBtn2');
     const zoomOutBtn2 = document.getElementById('zoomOutBtn2');
     const resetViewBtn2 = document.getElementById('resetViewBtn2');
-    const regenerateBtn = document.getElementById('regenerateBtn');
     const returnLobbyBtn = document.getElementById('returnLobbyBtn');
     
     if (zoomInBtn) zoomInBtn.addEventListener('click', () => mapSystemInstance?.handleZoomIn());
@@ -1295,7 +1354,6 @@ function setupButtonEvents() {
     if (zoomInBtn2) zoomInBtn2.addEventListener('click', () => mapSystemInstance?.handleZoomIn());
     if (zoomOutBtn2) zoomOutBtn2.addEventListener('click', () => mapSystemInstance?.handleZoomOut());
     if (resetViewBtn2) resetViewBtn2.addEventListener('click', () => mapSystemInstance?.handleResetView());
-    if (regenerateBtn) regenerateBtn.addEventListener('click', () => mapSystemInstance?.handleRegenerateMap());
     if (returnLobbyBtn) returnLobbyBtn.addEventListener('click', () => mapSystemInstance?.handleReturnToLobby());
     
     console.log('🎮 Button Events eingerichtet');
@@ -1304,6 +1362,11 @@ function setupButtonEvents() {
 // Export for module usage (if needed)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { MapSystem, initializeMapSystem, setupButtonEvents };
+} else {
+    // Make available globally
+    window.MapSystem = MapSystem;
+    window.initializeMapSystem = initializeMapSystem;
+    window.setupButtonEvents = setupButtonEvents;
 }
 
-console.log('✅ Map System Module geladen');
+console.log('✅ Map System Module vollständig geladen');
