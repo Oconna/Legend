@@ -127,14 +127,19 @@
 
     <!-- JavaScript Dependencies -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/races.js"></script>
-    
-    <!-- Game Modules -->
-    <script src="js/game-config.js"></script>
-    <script src="js/socket-manager.js"></script>
-    <script src="js/race-selection.js"></script>
-    <script src="js/map-system.js"></script>
-    <script src="js/game-state.js"></script>
-    <script src="js/game-main.js"></script>
+
+    <!-- Konfiguration zuerst -->
+    <script src="/js/game-config.js"></script>
+
+    <!-- State-Manager, weil ihn viele brauchen -->
+    <script src="/js/game-state.js"></script>
+
+    <!-- Ab hier dürfen Module auf GAME_CONFIG & gameState zugreifen -->
+    <script src="/js/socket-manager.js"></script>
+    <script src="/js/races.js"></script>
+    <script src="/js/race-selection.js"></script>
+    <script src="/js/map-system.js"></script>
+    <script src="/js/game-main.js"></script>
+
 </body>
 </html>
