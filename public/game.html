@@ -141,9 +141,9 @@
             <canvas class="map-canvas" id="gameCanvas"></canvas>
             
             <div class="zoom-controls">
-                <button class="zoom-btn" onclick="mapSystem.zoomIn()">+</button>
-                <button class="zoom-btn" onclick="mapSystem.zoomOut()">−</button>
-                <button class="zoom-btn" onclick="mapSystem.resetView()" style="font-size: 14px;">⌂</button>
+                <button class="zoom-btn" onclick="zoomIn()">+</button>
+                <button class="zoom-btn" onclick="zoomOut()">−</button>
+                <button class="zoom-btn" onclick="resetView()" style="font-size: 14px;">⌂</button>
             </div>
             
             <div class="coordinates" id="coordinates">
@@ -170,7 +170,7 @@
                     • WASD/Pfeiltasten = Bewegen<br>
                     • Leertaste = Kamera zentrieren
                 </p>
-                <button class="btn btn-secondary" onclick="mapSystem.returnToLobby()">🚪 Zur Lobby</button>
+                <button class="btn btn-secondary" onclick="returnToLobby()">🚪 Zur Lobby</button>
             </div>
         </div>
     </div>
