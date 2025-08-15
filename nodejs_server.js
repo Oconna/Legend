@@ -40,13 +40,16 @@ class GameManager {
                 id: Date.now()
             }],
             maxPlayers: gameData.maxPlayers,
-            mapSize: gameData.mapSize,
+            settings: gameData.settings || {
+                mapSize: 30,
+                gameMode: 'standard'
+            },
             status: 'waiting', // waiting, playing, finished
             createdAt: new Date()
         };
 
         this.games.set(gameId, game);
-        console.log(`✅ Spiel erstellt: ${game.name} (ID: ${gameId})`);
+        console.log(`✅ Spiel erstellt: ${game.name} (ID: ${gameId}) - Kartengröße: ${game.settings.mapSize}`);
         return game;
     }
 
@@ -157,7 +160,7 @@ class GameManager {
                     hostName: game.hostName,
                     playerCount: game.players.length,
                     maxPlayers: game.maxPlayers,
-                    mapSize: game.mapSize,
+                    settings: game.settings,
                     status: game.status
                 });
             }
@@ -318,6 +321,34 @@ io.on('connection', (socket) => {
                 error: 'Spiel kann nicht gestartet werden'
             });
         }
+    });
+
+    // Spiel-Einstellungen aktualisieren
+    socket.on('update-game-settings', (data) => {
+        const game = gameManager.getGameBySocketId(socket.id);
+        
+        if (!game) {
+            socket.emit('update-settings-failed', { error: 'Nicht in einem Spiel' });
+            return;
+        }
+        
+        // Prüfe ob Host
+        if (game.host !== socket.id) {
+            socket.emit('update-settings-failed', { error: 'Nur der Host kann Einstellungen ändern' });
+            return;
+        }
+        
+        // Update settings
+        game.settings = { ...game.settings, ...data.settings };
+        console.log(`⚙️ Spieleinstellungen geändert: ${game.name} - Neue Kartengröße: ${game.settings.mapSize}`);
+        
+        // Informiere alle Spieler im Spiel
+        io.to(data.gameId).emit('game-settings-updated', {
+            game: game
+        });
+        
+        // Update Spiele-Liste
+        io.emit('game-list-updated', gameManager.getPublicGames());
     });
 
     // Spiele-Liste anfordern
