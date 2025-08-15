@@ -766,6 +766,9 @@
             }
 
             addSwamps() {
+                console.log('🐸 Füge Sümpfe hinzu...');
+                let swampsAdded = 0;
+                
                 for (let y = 1; y < this.mapSize - 1; y++) {
                     for (let x = 1; x < this.mapSize - 1; x++) {
                         if (this.mapData[y][x].terrain === 'grass') {
@@ -780,12 +783,14 @@
                                 }
                             }
                             
-                            if (waterNearby >= 2 && Math.random() < 0.4) {
+                            if (waterNearby >= 2 && Math.random() < 0.5) {
                                 this.mapData[y][x].terrain = 'swamp';
+                                swampsAdded++;
                             }
                         }
                     }
                 }
+                console.log(`🐸 ${swampsAdded} Sumpffelder hinzugefügt`);
             }
 
             placeCitiesAndCastles() {
