@@ -1,534 +1,340 @@
-// File: game-main.js
-// Zweck: Orchestriert den Spielfluss (Lobby → Rassenauswahl → Match → Rundenablauf)
-// Sprache: Deutsch (Kommentare & UI-Texte)
+// game-main.js
+// Orchestriert den Spielfluss:
+// 1) Spielstart -> Rassenauswahl
+// 2) Wenn alle gewählt -> Map generieren
+// 3) Zufällige Zugreihenfolge -> Rundenbasiertes Spielen
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Annahmen zu vorhandenen Modulen (bitte bei Bedarf anpassen):
-// socket-manager.js:
-//   export function connect(opts?): Socket
-//   export function on(event, handler): void
-//   export function emit(event, payload?): void
-//   export function id(): string
-//
-// game-state.js:
-//   export function createInitialState({ map, players, config, races }): GameState
-//   export function currentPlayer(state): Player
-//   export function endTurn(state): GameState
-//   export function addStartOfTurnIncome(state): GameState
-//   export function canMove(state, from, to): boolean
-//   export function moveUnit(state, from, to): GameState
-//   export function canAttack(state, from, to): boolean
-//   export function attack(state, from, to): GameState
-//   export function validMoves(state, from): Array<TilePos>
-//   export function isDefeated(state, playerId): boolean
-//   export function selectRace(state, playerId, raceId): GameState
-//
-// map-system.js:
-//   export function generateMap({width, height, terrainSeed?, terrainDefs?}): MapData
-//   export function mount(containerEl): MapRenderer
-//   // MapRenderer API:
-//   //   render(state): void
-//   //   highlight(tiles: TilePos[], style?): void
-//   //   clearHighlights(): void
-//   //   onTileClick(cb: (pos: {q,r}) => void): void
-//
-// race-selection.js:
-//   export function openRaceSelection({ races, onSelect, onReadyToggle }): void
-//   export function closeRaceSelection(): void
-//   export function renderLobbyReady({ players, onReadyToggle }): void
-//
-// game-config.js:
-//   export const CONFIG = { MAP_WIDTH, MAP_HEIGHT, GOLD_PER_CITY, MAX_PLAYERS, MIN_PLAYERS, TURN_SECONDS, ... }
-//
-// races.js oder races-data.json:
-//   export const RACES = [{ id: 'humans', name: 'Menschen', units: [...] }, ...]  // 15+ Rassen
-// ─────────────────────────────────────────────────────────────────────────────
+(() => {
+  // ---- Hilfs-Utilities ------------------------------------------------------
+  const log = (...a) => console.log("[game-main]", ...a);
 
-import * as Socket from './socket-manager.js';
-import * as GameState from './game-state.js';
-import * as MapSystem from './map-system.js';
-import { openRaceSelection, closeRaceSelection, renderLobbyReady } from './race-selection.js';
-import { CONFIG } from './game-config.js';
-import { RACES } from './races.js'; // oder: import racesData from './races-data.json' assert { type: 'json' };
+  // Robust Socket beziehen
+  const socket =
+    (window.SocketManager && window.SocketManager.socket) ||
+    (window.io && window.io()) ||
+    null;
 
-(function main() {
-  // ───────────────────────────────────────────────────────────────────────────
-  // DOM-Referenzen (passe IDs/Klassen an deine index.html/game.html an)
-  const els = {
-    screenLobby: byId('screen-lobby'),
-    screenGame: byId('screen-game'),
-    listPlayers: byId('lobby-players'),
-    btnInvite: byId('btn-invite'),
-    btnReady: byId('btn-ready'),
-    btnStart: byId('btn-start'),
-    statusText: byId('status-text'),
-    mapContainer: byId('map-root'),
-    turnInfo: byId('turn-info'),
-    btnEndTurn: byId('btn-end-turn'),
-    sidebar: byId('sidebar'),
-    toast: byId('toast'),
-    timer: byId('turn-timer'),
-  };
-
-  // State im Frontend
-  const client = {
-    socketConnected: false,
-    playerId: null,
-    lobby: {
-      gameId: null,
-      players: [], // { id, name, ready: bool, raceId?: string }
-      hostId: null,
-      allReady: false,
-      min: CONFIG.MIN_PLAYERS ?? 2,
-      max: CONFIG.MAX_PLAYERS ?? 8,
-    },
-    ui: {
-      selectedTile: null,
-      highlighted: [],
-      actionMode: 'select', // 'move' | 'attack' | 'select'
-      turnEndsAt: null, // Date
-      timerInterval: null,
-    },
-    game: {
-      running: false,
-      state: null,  // authoritative (vom Server gespiegelt)
-      races: RACES,
-      config: CONFIG,
-      mapRenderer: null,
-    },
-  };
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Socket-Verbindung & Events
-  const socket = Socket.connect?.() ?? null;
   if (!socket) {
-    console.error('[game-main] Konnte Socket nicht verbinden. Prüfe socket-manager.js');
+    console.error(
+      "[game-main] Kein Socket verfügbar. Stelle sicher, dass socket.io geladen ist oder SocketManager.socket bereit steht."
+    );
   }
 
-  client.playerId = Socket.id?.() ?? null;
+  // Robust Zugriff auf optionale Module
+  const RaceSelection = window.RaceSelection || null; // erwartet API: RaceSelection.open({ races, onSelect })
+  const MapSystem = window.MapSystem || null;         // erwartet API: MapSystem.generate(config) -> mapData (und zeichnet/initialisiert)
+  const GameState = window.GameState || {
+    state: {
+      players: {},          // playerId -> { name, raceId, ... }
+      localPlayerId: null,  // eigene socket.id
+      turnOrder: [],        // Array von playerIds
+      currentTurnIndex: 0,  // Index in turnOrder
+      phase: "lobby",       // 'lobby' | 'race' | 'generating' | 'playing'
+      map: null,            // Mapdaten/-objekt
+    },
+    setPhase(p) {
+      this.state.phase = p;
+      log("Phase:", p);
+      document.dispatchEvent(new CustomEvent("game:phase", { detail: p }));
+    },
+    setPlayers(players) {
+      this.state.players = players || {};
+      document.dispatchEvent(new CustomEvent("game:players", { detail: players }));
+    },
+    setLocalPlayerId(id) {
+      this.state.localPlayerId = id;
+    },
+    setPlayerRace(playerId, raceId) {
+      if (!this.state.players[playerId]) this.state.players[playerId] = {};
+      this.state.players[playerId].raceId = raceId;
+      document.dispatchEvent(
+        new CustomEvent("game:playerRace", { detail: { playerId, raceId } })
+      );
+    },
+    setTurnOrder(order) {
+      this.state.turnOrder = order || [];
+      this.state.currentTurnIndex = 0;
+      document.dispatchEvent(new CustomEvent("game:turnOrder", { detail: order }));
+    },
+    nextTurn() {
+      if (!this.state.turnOrder.length) return;
+      this.state.currentTurnIndex =
+        (this.state.currentTurnIndex + 1) % this.state.turnOrder.length;
+      const current = this.getCurrentPlayerId();
+      document.dispatchEvent(new CustomEvent("game:turnChanged", { detail: current }));
+    },
+    getCurrentPlayerId() {
+      if (!this.state.turnOrder.length) return null;
+      return this.state.turnOrder[this.state.currentTurnIndex];
+    },
+    setMap(map) {
+      this.state.map = map;
+      document.dispatchEvent(new CustomEvent("game:mapReady", { detail: map }));
+    },
+  };
 
-  Socket.on('connect', () => {
-    client.socketConnected = true;
-    client.playerId = Socket.id?.();
-    logUI('Verbunden. Spieler-ID: ' + client.playerId);
-    // Tritt automatisch der Lobby bei oder fordere Spielbeitritt an
-    Socket.emit('lobby:join', {});
-  });
-
-  Socket.on('disconnect', () => {
-    client.socketConnected = false;
-    warnUI('Verbindung getrennt. Versuche, erneut zu verbinden …');
-  });
-
-  // Lobby-Updates
-  Socket.on('lobby:update', (payload) => {
-    // payload: { gameId, players, hostId }
-    client.lobby.gameId = payload.gameId;
-    client.lobby.players = payload.players;
-    client.lobby.hostId = payload.hostId;
-    client.lobby.allReady = payload.players.length >= client.lobby.min && payload.players.every(p => p.ready);
-    renderLobby();
-  });
-
-  // Server bestätigt Start → erzeuge Map & Initialzustand (oder empfange Seed/Zustand)
-  Socket.on('game:start', (payload) => {
-    // payload: { mapSeed?, map?, players, config, playerOrder?, initialState? }
-    showScreen('game');
-    client.game.running = true;
-
-    const mapData = payload.map ?? MapSystem.generateMap({
-      width: payload.config?.MAP_WIDTH ?? CONFIG.MAP_WIDTH ?? 20,
-      height: payload.config?.MAP_HEIGHT ?? CONFIG.MAP_HEIGHT ?? 20,
-      terrainSeed: payload.mapSeed ?? undefined,
-      terrainDefs: payload.terrainDefs ?? undefined,
-    });
-
-    const initialState = payload.initialState ?? GameState.createInitialState({
-      map: mapData,
-      players: payload.players,
-      races: client.game.races,
-      config: { ...CONFIG, ...payload.config },
-    });
-
-    // Map Renderer initialisieren
-    client.game.mapRenderer = MapSystem.mount(els.mapContainer);
-    client.game.state = initialState;
-
-    wireMapInteractions();
-    fullRender();
-
-    // Rundenstart (Timer, Einkommen, etc.)
-    handleStartOfTurn();
-  });
-
-  // Autoritative Zustands-Updates (Server → Client)
-  Socket.on('state:update', (newState) => {
-    client.game.state = newState;
-    fullRender();
-  });
-
-  // Timer Sync (optional, falls Server Takt vorgibt)
-  Socket.on('turn:sync', ({ endsAt }) => {
-    client.ui.turnEndsAt = endsAt ? new Date(endsAt) : null;
-    startTurnTimer();
-  });
-
-  // Fehler/Toast aus dem Server
-  Socket.on('notify', ({ type = 'info', message = '' }) => {
-    toast(message, type);
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Lobby-UI & Rassenauswahl
-
-  function renderLobby() {
-    if (!els.screenLobby) return;
-    showScreen('lobby');
-
-    const isHost = client.lobby.hostId === client.playerId;
-    const { players, min, max, allReady } = client.lobby;
-
-    // Liste rendern
-    if (els.listPlayers) {
-      els.listPlayers.innerHTML = players.map(p => `
-        <li class="player ${p.ready ? 'ready' : ''}">
-          <span>${escapeHtml(p.name ?? ('Spieler ' + shortId(p.id)))}</span>
-          <span>${p.ready ? 'Bereit' : 'Nicht bereit'}</span>
-          <span>${p.raceId ? `Rasse: ${escapeHtml(p.raceId)}` : ''}</span>
-        </li>
-      `).join('');
-    }
-
-    // Ready/Lobby-Steuerung
-    if (els.btnReady) {
-      els.btnReady.disabled = false;
-      els.btnReady.onclick = () => {
-        const me = players.find(p => p.id === client.playerId);
-        const newReady = !me?.ready;
-        Socket.emit('lobby:ready', { ready: newReady });
-
-        // Rassenauswahl aufklappen, wenn auf "bereit" schalten und noch keine Rasse
-        const hasRace = !!me?.raceId;
-        if (newReady && !hasRace) {
-          openRaceSelection({
-            races: client.game.races,
-            onSelect: (raceId) => {
-              Socket.emit('race:select', { raceId });
-              // Frontend kann optional gleich darstellen:
-              // client.game.state = GameState.selectRace(client.game.state, client.playerId, raceId);
-              closeRaceSelection();
-            },
-            onReadyToggle: (ready) => Socket.emit('lobby:ready', { ready }),
-          });
-        }
-      };
-    }
-
-    if (els.btnStart) {
-      els.btnStart.disabled = !(isHost && allReady && players.length >= min && players.length <= max);
-      els.btnStart.onclick = () => {
-        // Host initiiert Start (Server prüft nochmals)
-        Socket.emit('game:request-start', {
-          config: client.game.config,
-        });
-      };
-    }
-
-    // Zeige „Bereit“-Panel erneut, wenn nötig (z. B. Rasse ändern)
-    renderLobbyReady({
-      players,
-      onReadyToggle: (ready) => Socket.emit('lobby:ready', { ready }),
-    });
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Map-Interaktion & Aktionen
-
-  function wireMapInteractions() {
-    const renderer = client.game.mapRenderer;
-    if (!renderer) return;
-
-    renderer.onTileClick((pos) => {
-      const state = client.game.state;
-      const myId = client.playerId;
-      const current = GameState.currentPlayer(state);
-
-      // Nur in meinem Zug interagieren
-      if (!current || current.id !== myId) {
-        infoUI('Nicht dein Zug.');
-        return;
-      }
-
-      // Auswahl-/Aktion-Logik
-      const selected = client.ui.selectedTile;
-
-      // Falls noch nichts ausgewählt → wähle Startfeld
-      if (!selected) {
-        client.ui.selectedTile = pos;
-        const moves = safe(() => GameState.validMoves(state, pos), []);
-        renderer.clearHighlights();
-        renderer.highlight(moves, { type: 'moves' });
-        return;
-      }
-
-      // Wenn bereits ausgewählt → versuche Move/Attack
-      if (client.ui.actionMode === 'select') {
-        // Heuristik: Wenn Zielfeld gegnerische Einheit → Attack, sonst Move
-        tryAction(selected, pos);
-      } else if (client.ui.actionMode === 'move') {
-        tryMove(selected, pos);
-      } else if (client.ui.actionMode === 'attack') {
-        tryAttack(selected, pos);
-      }
-    });
-  }
-
-  function tryAction(from, to) {
-    // Diese Routine versucht Move → wenn nicht möglich, Attack
-    if (GameState.canMove(client.game.state, from, to)) {
-      tryMove(from, to);
-    } else if (GameState.canAttack(client.game.state, from, to)) {
-      tryAttack(from, to);
-    } else {
-      infoUI('Ungültige Aktion.');
-    }
-  }
-
-  function tryMove(from, to) {
-    if (!GameState.canMove(client.game.state, from, to)) {
-      infoUI('Bewegung nicht möglich.');
-      return;
-    }
-    // Lokal optimistisch anwenden (optional) …
-    const optimistic = GameState.moveUnit(client.game.state, from, to);
-    client.game.state = optimistic;
-    fullRender();
-    // … und an Server senden
-    Socket.emit('action:move', { from, to });
-    // Server antwortet per state:update autoritativ
-    client.ui.selectedTile = to;
-  }
-
-  function tryAttack(from, to) {
-    if (!GameState.canAttack(client.game.state, from, to)) {
-      infoUI('Angriff nicht möglich.');
-      return;
-    }
-    const optimistic = GameState.attack(client.game.state, from, to);
-    client.game.state = optimistic;
-    fullRender();
-    Socket.emit('action:attack', { from, to });
-    client.ui.selectedTile = to; // ggf. Einheit steht nach Kampf dort (falls Gegner besiegt)
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Rundenlogik
-
-  function handleStartOfTurn() {
-    // Einkommen
-    client.game.state = GameState.addStartOfTurnIncome(client.game.state);
-
-    // Turn-Timer
-    if (CONFIG.TURN_SECONDS) {
-      const endsAt = new Date(Date.now() + CONFIG.TURN_SECONDS * 1000);
-      client.ui.turnEndsAt = endsAt;
-      Socket.emit('turn:local-started', { endsAt }); // optional
-      startTurnTimer();
-    }
-
-    // Sieg/Niederlage prüfen
-    const me = client.playerId;
-    if (GameState.isDefeated(client.game.state, me)) {
-      toast('Du hast keine Städte/Burgen mehr. Du bist ausgeschieden.', 'warn');
-      Socket.emit('player:defeated', { playerId: me });
-    }
-
-    fullRender();
-  }
-
-  function endMyTurn() {
-    const current = GameState.currentPlayer(client.game.state);
-    if (!current || current.id !== client.playerId) {
-      infoUI('Nicht dein Zug.');
-      return;
-    }
-    // Lokal vorwegnehmen (optional)
-    client.game.state = GameState.endTurn(client.game.state);
-    fullRender();
-    stopTurnTimer();
-
-    // Server informieren (server validiert Reihenfolge)
-    Socket.emit('turn:end', {});
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Rendering
-
-  function fullRender() {
-    renderHud();
-    if (client.game.mapRenderer) {
-      client.game.mapRenderer.render(client.game.state);
-    }
-  }
-
-  function renderHud() {
-    const state = client.game.state;
-    if (!state) return;
-
-    const current = GameState.currentPlayer(state);
-    const myTurn = current && current.id === client.playerId;
-
-    if (els.turnInfo) {
-      els.turnInfo.textContent = myTurn
-        ? `Dein Zug – Spieler: ${displayPlayer(current)}`
-        : `Am Zug: ${displayPlayer(current)}`;
-    }
-
-    if (els.btnEndTurn) {
-      els.btnEndTurn.disabled = !myTurn;
-      els.btnEndTurn.onclick = () => endMyTurn();
-    }
-
-    if (els.sidebar) {
-      // Beispiel: zeige Gold, Städte, Rundenanzahl, etc. – passe an deine State-Struktur an
-      const me = (state.players ?? []).find(p => p.id === client.playerId);
-      const gold = me?.gold ?? 0;
-      const cities = me?.cities?.length ?? 0;
-      els.sidebar.innerHTML = `
-        <div class="panel">
-          <div class="row"><strong>Gold:</strong> ${gold}</div>
-          <div class="row"><strong>Städte/Burgen:</strong> ${cities}</div>
-          <div class="row"><strong>Rasse:</strong> ${escapeHtml(me?.raceId ?? '—')}</div>
+  // ---- UI/DOM-Minimal-Fallbacks --------------------------------------------
+  // Einfache Fallback-UI für Rassenauswahl, falls RaceSelection-Modul fehlt.
+  function openRaceSelectionFallback({ races, onSelect }) {
+    let overlay = document.getElementById("race-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "race-overlay";
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.background = "rgba(0,0,0,0.6)";
+      overlay.style.display = "grid";
+      overlay.style.placeItems = "center";
+      overlay.style.zIndex = "9999";
+      overlay.innerHTML = `
+        <div style="background:#111;color:#fff;padding:16px;border-radius:12px;max-width:700px;width:95%;box-shadow:0 10px 30px rgba(0,0,0,0.5)">
+          <h2 style="margin:0 0 8px 0;font-family:system-ui">Wähle deine Rasse</h2>
+          <div id="race-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:60vh;overflow:auto"></div>
         </div>
       `;
+      document.body.appendChild(overlay);
+    }
+    const grid = overlay.querySelector("#race-grid");
+    grid.innerHTML = "";
+    races.forEach((r, idx) => {
+      const btn = document.createElement("button");
+      btn.textContent = r.name || `Rasse ${idx + 1}`;
+      btn.style.padding = "10px";
+      btn.style.border = "1px solid #333";
+      btn.style.background = "#222";
+      btn.style.color = "#fff";
+      btn.style.borderRadius = "8px";
+      btn.style.cursor = "pointer";
+      btn.addEventListener("click", () => {
+        overlay.remove();
+        onSelect(r.id ?? idx, r);
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  function openRaceSelection({ races, onSelect }) {
+    if (RaceSelection && typeof RaceSelection.open === "function") {
+      RaceSelection.open({ races, onSelect });
+    } else {
+      openRaceSelectionFallback({ races, onSelect });
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Turn-Timer (optional)
+  // Einfacher Hinweis oben links, wessen Zug ist.
+  function ensureTurnBanner() {
+    let el = document.getElementById("turn-banner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "turn-banner";
+      el.style.position = "fixed";
+      el.style.top = "10px";
+      el.style.left = "10px";
+      el.style.padding = "8px 12px";
+      el.style.background = "#222";
+      el.style.color = "#fff";
+      el.style.borderRadius = "8px";
+      el.style.fontFamily = "system-ui, sans-serif";
+      el.style.zIndex = "9998";
+      document.body.appendChild(el);
+    }
+    return el;
+  }
 
-  function startTurnTimer() {
-    stopTurnTimer();
-    if (!els.timer || !client.ui.turnEndsAt) return;
+  function updateTurnBanner() {
+    const el = ensureTurnBanner();
+    const current = GameState.getCurrentPlayerId();
+    const currentName =
+      (current && GameState.state.players[current] && GameState.state.players[current].name) ||
+      current ||
+      "-";
+    el.textContent = `Zug: ${currentName}`;
+  }
 
-    const tick = () => {
-      const ms = client.ui.turnEndsAt - Date.now();
-      if (ms <= 0) {
-        els.timer.textContent = '00:00';
-        stopTurnTimer();
-        if (GameState.currentPlayer(client.game.state)?.id === client.playerId) {
-          // Auto-Ende, wenn mein Zug abläuft
-          endMyTurn();
-        }
-        return;
+  // ---- Kernlogik ------------------------------------------------------------
+
+  // Rassenliste laden (falls RaceSelection diese nicht selbst liefert)
+  // Versucht races-data.json zu holen; fällt ansonsten auf Dummy-Liste zurück.
+  async function loadRaces() {
+    try {
+      const res = await fetch("races-data.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      // Erwartet Format: [{ id, name, ... }, ...]
+      if (Array.isArray(data) && data.length) return data;
+    } catch (e) {
+      log("Konnte races-data.json nicht laden, nutze Dummy-Liste.", e);
+    }
+    // Fallback: 15 Dummy-Rassen
+    return Array.from({ length: 15 }).map((_, i) => ({
+      id: `race-${i + 1}`,
+      name: `Rasse ${i + 1}`,
+    }));
+  }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Startet Rassenauswahl lokal und meldet Auswahl an den Server
+  async function startRaceSelection() {
+    GameState.setPhase("race");
+    const races = await loadRaces();
+    openRaceSelection({
+      races,
+      onSelect: (raceId, raceObj) => {
+        const payload = {
+          playerId: GameState.state.localPlayerId || (socket && socket.id) || null,
+          raceId,
+        };
+        GameState.setPlayerRace(payload.playerId, raceId);
+        if (socket) socket.emit("race:selected", payload);
+        log("Rasse gewählt:", payload, raceObj);
+      },
+    });
+  }
+
+  // Wird aufgerufen, wenn alle Rassen gewählt sind
+  function onAllRacesSelected(serverPlayersSnapshot) {
+    if (serverPlayersSnapshot) {
+      GameState.setPlayers(serverPlayersSnapshot);
+    }
+    GameState.setPhase("generating");
+
+    // Map vom Server generieren lassen, wenn Event unterstützt, sonst lokal Map erzeugen
+    if (socket) {
+      socket.emit("map:generate", {
+        // Hier könnten Settings übergeben werden (z. B. aus game-config.js)
+        // Beispiel: size, seed, terrainTypes, playerStarts etc.
+      });
+    } else {
+      generateMapLocallyAndStart();
+    }
+  }
+
+  function generateMapLocallyAndStart() {
+    // Lokale Generierung, falls kein Server-Event existiert
+    let mapData = null;
+    if (MapSystem && typeof MapSystem.generate === "function") {
+      mapData = MapSystem.generate({
+        // Minimal-Konfiguration; passt bei Bedarf an eure map-system.js an
+        width: 20,
+        height: 20,
+        players: Object.keys(GameState.state.players || {}),
+      });
+    } else {
+      // Minimaler Platzhalter
+      mapData = { width: 20, height: 20, tiles: [] };
+    }
+    GameState.setMap(mapData);
+
+    // Zufällige Zugreihenfolge erzeugen
+    const order = shuffle(Object.keys(GameState.state.players || {}));
+    GameState.setTurnOrder(order);
+    GameState.setPhase("playing");
+    updateTurnBanner();
+  }
+
+  // ---- Socket verdrahten ----------------------------------------------------
+
+  if (socket) {
+    // Eigene ID merken
+    socket.on("connect", () => {
+      GameState.setLocalPlayerId(socket.id);
+      log("Verbunden als", socket.id);
+    });
+
+    // Wenn Lobby signalisiert: alle sind bereit -> Rassenauswahl
+    socket.on("lobby:all-ready", () => {
+      log("Alle Spieler bereit -> Rassenauswahl beginnt");
+      startRaceSelection();
+    });
+
+    // Server-Status zu Rassenauswahlen (z. B. wenn andere Spieler wählen)
+    socket.on("race:state", (playersSnapshot) => {
+      // Erwartet: { playerId: { name, raceId, ... }, ... }
+      GameState.setPlayers(playersSnapshot || {});
+      // Wenn der lokale Spieler schon gewählt hat, aktualisieren wir seine Anzeige
+      updateTurnBanner();
+    });
+
+    // Server meldet: alle Rassen wurden gewählt
+    socket.on("race:all-selected", (playersSnapshot) => {
+      log("Alle Rassen gewählt");
+      onAllRacesSelected(playersSnapshot);
+    });
+
+    // Server liefert generierte Map
+    socket.on("map:generated", (mapData) => {
+      log("Map empfangen", mapData);
+      GameState.setMap(mapData);
+
+      // Server kann optional auch die Zugreihenfolge vorgeben
+      if (mapData && Array.isArray(mapData.turnOrder) && mapData.turnOrder.length) {
+        GameState.setTurnOrder(mapData.turnOrder);
+      } else {
+        const order = shuffle(Object.keys(GameState.state.players || {}));
+        GameState.setTurnOrder(order);
       }
-      const s = Math.ceil(ms / 1000);
-      els.timer.textContent = formatClock(s);
-    };
-    tick();
-    client.ui.timerInterval = setInterval(tick, 250);
+
+      GameState.setPhase("playing");
+      updateTurnBanner();
+    });
+
+    // Falls Server aktiv eine Reihenfolge verteilt
+    socket.on("turn:order", (order) => {
+      if (Array.isArray(order) && order.length) {
+        GameState.setTurnOrder(order);
+        updateTurnBanner();
+      }
+    });
+
+    // Beispiel: Server ruft zum nächsten Zug auf (optional)
+    socket.on("turn:next", () => {
+      GameState.nextTurn();
+      updateTurnBanner();
+    });
   }
 
-  function stopTurnTimer() {
-    if (client.ui.timerInterval) {
-      clearInterval(client.ui.timerInterval);
-      client.ui.timerInterval = null;
+  // ---- Lokale Events / Hooks ------------------------------------------------
+
+  // Falls kein Server die Lobby steuert: wir fangen direkt mit Rassenauswahl an,
+  // sobald Seite geladen ist. Wenn der Server vorhanden ist, wird "lobby:all-ready"
+  // den Start übernehmen.
+  window.addEventListener("load", () => {
+    if (!socket) {
+      // Offline/ohne Server: Demo-Flow
+      // Dummy-Spielerliste (2-8)
+      const localId = "local-demo";
+      GameState.setLocalPlayerId(localId);
+      const players = {
+        [localId]: { name: "Du" },
+        bot1: { name: "Spieler 2" },
+      };
+      GameState.setPlayers(players);
+      startRaceSelection();
     }
-  }
+  });
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // UI-Helfer
+  // Wenn Phase auf 'playing' wechselt, stellen wir sicher, dass der Banner sichtbar ist
+  document.addEventListener("game:phase", (e) => {
+    if (e.detail === "playing") updateTurnBanner();
+  });
 
-  function showScreen(which) {
-    if (els.screenLobby) els.screenLobby.style.display = which === 'lobby' ? 'block' : 'none';
-    if (els.screenGame) els.screenGame.style.display = which === 'game' ? 'block' : 'none';
-  }
-
-  function logUI(msg) {
-    if (els.statusText) {
-      els.statusText.textContent = msg;
-    }
-    console.log('[UI]', msg);
-  }
-
-  function infoUI(msg) {
-    console.info(msg);
-    toast(msg, 'info');
-  }
-
-  function warnUI(msg) {
-    console.warn(msg);
-    toast(msg, 'warn');
-  }
-
-  function toast(message, type = 'info', ms = 2500) {
-    if (!els.toast) {
-      console[type === 'warn' ? 'warn' : 'log']('[Toast]', message);
-      return;
-    }
-    els.toast.textContent = message;
-    els.toast.className = `toast ${type}`;
-    els.toast.style.opacity = '1';
-    setTimeout(() => {
-      els.toast.style.opacity = '0';
-    }, ms);
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Events aus Buttons / UI
-
-  if (els.btnInvite) {
-    els.btnInvite.onclick = () => {
-      // Einfache Invite-UX: Link zur aktuellen Lobby in Zwischenablage kopieren
-      const url = new URL(window.location.href);
-      if (client.lobby.gameId) url.searchParams.set('game', client.lobby.gameId);
-      navigator.clipboard?.writeText(url.toString());
-      toast('Lobby-Link kopiert! Sende ihn deinen Freunden.');
-    };
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Utilities
-
-  function byId(id) {
-    return document.getElementById(id);
-  }
-
-  function escapeHtml(s) {
-    return String(s ?? '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-  }
-
-  function shortId(id) {
-    if (!id) return '—';
-    return String(id).slice(0, 4);
-  }
-
-  function displayPlayer(p) {
-    if (!p) return '—';
-    return escapeHtml(p.name ?? ('Spieler ' + shortId(p.id)));
-  }
-
-  function formatClock(totalSeconds) {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-
-  function safe(fn, fallback) {
-    try { return fn(); } catch { return fallback; }
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Debug-Hooks (optional, entferne in Produktion)
-
-  window.__GAME_DEBUG__ = {
-    get state() { return client.game.state; },
-    forceRender: fullRender,
-    endTurn: endMyTurn,
+  // Exponiere minimal API (optional, für Debug/Buttons)
+  window.GameMain = {
+    startRaceSelection,
+    generateMapLocallyAndStart,
+    nextTurn: () => {
+      GameState.nextTurn();
+      updateTurnBanner();
+      if (socket) socket.emit("turn:ended", { playerId: GameState.getCurrentPlayerId() });
+    },
+    getState: () => GameState.state,
   };
 })();
