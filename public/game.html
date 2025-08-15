@@ -420,27 +420,41 @@
             generateGameMap() {
                 console.log('🗺️ Generiere Spiel-Karte...', this.gameSettings);
                 
-                // Schritt 1: Basis-Terrain mit Perlin-ähnlichem Noise
-                this.generateBaseTerrain();
-                
-                // Schritt 2: Wasser-Systeme hinzufügen
-                this.addWaterSystems();
-                
-                // Schritt 3: Bergketten erstellen
-                this.addMountainRanges();
-                
-                // Schritt 4: Wälder platzieren
-                this.addForests();
-                
-                // Schritt 5: Sümpfe in Niederungen
-                this.addSwamps();
-                
-                // Schritt 6: Städte und Burgen basierend auf Spielerzahl
-                this.placeCitiesAndCastles();
-                
-                this.updateMapInfo();
-                this.render();
-                console.log('✅ Spiel-Karte generiert!');
+                try {
+                    // Schritt 1: Basis-Terrain mit Perlin-ähnlichem Noise
+                    console.log('📍 Schritt 1: Generiere Basis-Terrain...');
+                    this.generateBaseTerrain();
+                    
+                    // Schritt 2: Wasser-Systeme hinzufügen
+                    console.log('📍 Schritt 2: Füge Wasser-Systeme hinzu...');
+                    this.addWaterSystems();
+                    
+                    // Schritt 3: Bergketten erstellen
+                    console.log('📍 Schritt 3: Erstelle Bergketten...');
+                    this.addMountainRanges();
+                    
+                    // Schritt 4: Wälder platzieren
+                    console.log('📍 Schritt 4: Platziere Wälder...');
+                    this.addForests();
+                    
+                    // Schritt 5: Sümpfe in Niederungen
+                    console.log('📍 Schritt 5: Füge Sümpfe hinzu...');
+                    this.addSwamps();
+                    
+                    // Schritt 6: Städte und Burgen basierend auf Spielerzahl
+                    console.log('📍 Schritt 6: Platziere Städte und Burgen...');
+                    this.placeCitiesAndCastles();
+                    
+                    console.log('📍 Aktualisiere Karten-Informationen...');
+                    this.updateMapInfo();
+                    
+                    console.log('📍 Rendere Karte...');
+                    this.render();
+                    
+                    console.log('✅ Spiel-Karte erfolgreich generiert!');
+                } catch (error) {
+                    console.error('❌ Fehler bei der Karten-Generierung:', error);
+                }
             }
 
             // ========================================
@@ -448,16 +462,28 @@
             // ========================================
 
             initializeCanvas() {
-                this.canvas.width = this.canvas.offsetWidth;
-                this.canvas.height = this.canvas.offsetHeight;
+                console.log('🖼️ Initialisiere Canvas...');
                 
-                const dpr = window.devicePixelRatio || 1;
-                const rect = this.canvas.getBoundingClientRect();
-                this.canvas.width = rect.width * dpr;
-                this.canvas.height = rect.height * dpr;
-                this.ctx.scale(dpr, dpr);
-                this.canvas.style.width = rect.width + 'px';
-                this.canvas.style.height = rect.height + 'px';
+                try {
+                    const rect = this.canvas.getBoundingClientRect();
+                    console.log('📐 Canvas Größe:', rect.width, 'x', rect.height);
+                    
+                    this.canvas.width = rect.width;
+                    this.canvas.height = rect.height;
+                    
+                    const dpr = window.devicePixelRatio || 1;
+                    console.log('📱 Device Pixel Ratio:', dpr);
+                    
+                    this.canvas.width = rect.width * dpr;
+                    this.canvas.height = rect.height * dpr;
+                    this.ctx.scale(dpr, dpr);
+                    this.canvas.style.width = rect.width + 'px';
+                    this.canvas.style.height = rect.height + 'px';
+                    
+                    console.log('✅ Canvas erfolgreich initialisiert');
+                } catch (error) {
+                    console.error('❌ Fehler bei Canvas-Initialisierung:', error);
+                }
             }
 
             initializeMap() {
