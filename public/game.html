@@ -631,7 +631,11 @@
             }
 
             render() {
+                console.log('🎨 Starte Rendering...');
+                
                 const canvasRect = this.canvas.getBoundingClientRect();
+                console.log('📐 Canvas Rect:', canvasRect.width, 'x', canvasRect.height);
+                
                 this.ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
                 
                 const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
@@ -639,13 +643,21 @@
                 const endX = Math.min(this.mapSize, startX + Math.ceil(canvasRect.width / (this.tileSize * this.camera.zoom)) + 2);
                 const endY = Math.min(this.mapSize, startY + Math.ceil(canvasRect.height / (this.tileSize * this.camera.zoom)) + 2);
                 
+                console.log(`🎨 Rendering Bereich: (${startX}, ${startY}) bis (${endX}, ${endY})`);
+                console.log(`🎨 Kamera: (${this.camera.x}, ${this.camera.y}), Zoom: ${this.camera.zoom}`);
+                
+                let tilesRendered = 0;
                 for (let y = startY; y < endY; y++) {
                     for (let x = startX; x < endX; x++) {
                         this.renderTile(x, y);
+                        tilesRendered++;
                     }
                 }
                 
+                console.log(`🎨 ${tilesRendered} Tiles gerendert`);
+                
                 this.renderGrid(startX, startY, endX, endY);
+                console.log('✅ Rendering abgeschlossen');
             }
 
             renderTile(gridX, gridY) {
