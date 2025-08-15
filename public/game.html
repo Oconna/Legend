@@ -42,7 +42,7 @@
         }
 
         .ui-panel {
-            width: 300px;
+            width: 320px;
             background: rgba(0, 0, 0, 0.8);
             padding: 20px;
             border-left: 2px solid #34495e;
@@ -82,8 +82,18 @@
             box-shadow: 0 3px 10px rgba(52, 152, 219, 0.4);
         }
 
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .btn-secondary {
             background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
         }
 
         .info-display {
@@ -140,7 +150,7 @@
         .debug-info {
             position: absolute;
             top: 20px;
-            right: 20px;
+            right: 340px;
             background: rgba(0, 0, 0, 0.8);
             padding: 10px;
             border-radius: 6px;
@@ -148,9 +158,170 @@
             z-index: 100;
             max-width: 200px;
         }
+
+        /* Race Selection Modal */
+        .race-selection-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .race-selection-content {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .race-selection-content h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+            color: #ecf0f1;
+        }
+
+        .races-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .race-card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .race-card:hover {
+            transform: translateY(-5px);
+            border-color: #3498db;
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .race-card.selected {
+            border-color: #e74c3c;
+            background: rgba(231, 76, 60, 0.2);
+        }
+
+        .race-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .race-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .race-description {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-bottom: 15px;
+        }
+
+        .race-special {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            border-radius: 5px;
+            font-size: 0.8em;
+            font-style: italic;
+        }
+
+        .unit-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .unit-preview {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 0.7em;
+        }
+
+        .unit-icon {
+            font-size: 1.5em;
+            margin-bottom: 3px;
+        }
+
+        /* Player Info Panel */
+        .player-info {
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+            margin: -20px -20px 20px -20px;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .gold-display {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+
+        .turn-indicator {
+            background: rgba(46, 204, 113, 0.8);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .units-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .unit-item {
+            background: rgba(255, 255, 255, 0.05);
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+
+        .unit-item.selected {
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid #3498db;
+        }
     </style>
 </head>
 <body>
+    <!-- Race Selection Modal -->
+    <div class="race-selection-modal" id="raceSelectionModal">
+        <div class="race-selection-content">
+            <h2>🏛️ Wähle deine Rasse</h2>
+            <div class="races-grid" id="racesGrid">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div style="text-align: center;">
+                <button class="btn btn-success" id="confirmRaceBtn" disabled>✅ Rasse bestätigen</button>
+            </div>
+        </div>
+    </div>
+
     <div class="game-container">
         <div class="map-container">
             <canvas class="map-canvas" id="gameCanvas"></canvas>
@@ -173,6 +344,31 @@
         </div>
 
         <div class="ui-panel">
+            <!-- Player Information -->
+            <div class="player-info">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div id="playerName">Spieler</div>
+                        <div class="gold-display">💰 <span id="goldAmount">100</span></div>
+                    </div>
+                    <div id="raceDisplay" style="font-size: 2em;">👑</div>
+                </div>
+                <div class="turn-indicator" id="turnIndicator">
+                    Warten auf Spiel...
+                </div>
+            </div>
+
+            <!-- Selected Unit Info -->
+            <div class="ui-section" id="selectedUnitSection" style="display: none;">
+                <h3>🎯 Ausgewählte Einheit</h3>
+                <div id="selectedUnitInfo" class="info-display">
+                    <!-- Wird dynamisch gefüllt -->
+                </div>
+                <button class="btn" id="upgradeUnitBtn">⬆️ Aufwerten</button>
+                <button class="btn btn-secondary" id="moveUnitBtn">🚶 Bewegen</button>
+            </div>
+
+            <!-- Map Information -->
             <div class="ui-section">
                 <h3>📊 Karten-Informationen</h3>
                 <div class="info-display" id="mapInfo">
@@ -180,6 +376,16 @@
                 </div>
             </div>
 
+            <!-- Units Overview -->
+            <div class="ui-section">
+                <h3>👥 Meine Einheiten</h3>
+                <div class="units-list" id="unitsList">
+                    <div class="info-display">Keine Einheiten</div>
+                </div>
+                <button class="btn btn-success" id="buyUnitsBtn">🛒 Einheiten kaufen</button>
+            </div>
+
+            <!-- Game Controls -->
             <div class="ui-section">
                 <h3>🎮 Spielsteuerung</h3>
                 <p style="font-size: 12px; margin-bottom: 15px; opacity: 0.8;">
@@ -187,79 +393,169 @@
                     • Mausrad = Zoom<br>
                     • Rechtsklick + Ziehen = Pan<br>
                     • WASD/Pfeiltasten = Bewegen<br>
-                    • Leertaste = Kamera zentrieren
+                    • Leertaste = Kamera zentrieren<br>
+                    • Linksklick = Einheit auswählen
                 </p>
+                <button class="btn" id="endTurnBtn">⏭️ Zug beenden</button>
                 <button class="btn" id="zoomInBtn2">🔍+ Vergrößern</button>
                 <button class="btn" id="zoomOutBtn2">🔍- Verkleinern</button>
                 <button class="btn" id="resetViewBtn2">🏠 Kamera zentrieren</button>
-                <button class="btn" id="regenerateBtn">🎲 Neue Karte</button>
                 <button class="btn btn-secondary" id="returnLobbyBtn">🚪 Zur Lobby</button>
             </div>
         </div>
     </div>
 
+    <!-- Include Race System -->
+    <script src="races.js"></script>
     <script>
-        console.log('🚀 Script lädt...');
+        console.log('🚀 Game Script lädt...');
         
         // ========================================
-        // TERRAIN DEFINITIONS
+        // GLOBAL GAME STATE
         // ========================================
         
-        const TERRAIN_DEFINITIONS = {
-            grass: {
-                name: 'Wiese',
-                color: '#27ae60',
-                movementCost: 1,
-                symbol: '🌱'
-            },
-            forest: {
-                name: 'Wald',
-                color: '#229954',
-                movementCost: 2,
-                symbol: '🌲'
-            },
-            mountain: {
-                name: 'Berge',
-                color: '#95a5a6',
-                movementCost: 3,
-                symbol: '⛰️'
-            },
-            swamp: {
-                name: 'Sumpf',
-                color: '#8b4513',
-                movementCost: 2,
-                symbol: '🐸'
-            },
-            water: {
-                name: 'Wasser',
-                color: '#3498db',
-                movementCost: -1,
-                symbol: '💧'
-            },
-            city: {
-                name: 'Stadt',
-                color: '#e67e22',
-                movementCost: 1,
-                symbol: '🏘️',
-                goldIncome: 2
-            },
-            castle: {
-                name: 'Burg',
-                color: '#9b59b6',
-                movementCost: 1,
-                symbol: '🏰',
-                goldIncome: 5
-            }
+        let gameState = {
+            gameSettings: null,
+            selectedRace: null,
+            raceConfirmed: false,
+            currentPlayer: null,
+            playerGold: 100,
+            selectedUnit: null,
+            units: [],
+            isMyTurn: false,
+            turnNumber: 1
         };
 
         // ========================================
-        // MAP SYSTEM CLASS
+        // RACE SELECTION SYSTEM
         // ========================================
         
-        class MapSystem {
+        class RaceSelection {
+            constructor() {
+                this.modal = document.getElementById('raceSelectionModal');
+                this.racesGrid = document.getElementById('racesGrid');
+                this.confirmBtn = document.getElementById('confirmRaceBtn');
+                this.selectedRaceId = null;
+                
+                this.setupEventListeners();
+                this.renderRaces();
+            }
+
+            setupEventListeners() {
+                this.confirmBtn.addEventListener('click', () => {
+                    this.confirmRaceSelection();
+                });
+            }
+
+            renderRaces() {
+                this.racesGrid.innerHTML = '';
+                
+                window.RaceSystem.getAllRaces().forEach(race => {
+                    const raceCard = this.createRaceCard(race);
+                    this.racesGrid.appendChild(raceCard);
+                });
+            }
+
+            createRaceCard(race) {
+                const card = document.createElement('div');
+                card.className = 'race-card';
+                card.dataset.raceId = race.id;
+                
+                card.innerHTML = `
+                    <div class="race-icon">${race.icon}</div>
+                    <div class="race-name">${race.name}</div>
+                    <div class="race-description">${race.description}</div>
+                    <div class="race-special">
+                        <strong>Spezial:</strong> ${race.specialAbility}
+                    </div>
+                    <div class="unit-grid">
+                        ${race.units.slice(0, 6).map(unit => `
+                            <div class="unit-preview">
+                                <div class="unit-icon">${unit.icon}</div>
+                                <div>${unit.name}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                card.addEventListener('click', () => {
+                    this.selectRace(race.id);
+                });
+                
+                return card;
+            }
+
+            selectRace(raceId) {
+                // Remove previous selection
+                this.racesGrid.querySelectorAll('.race-card').forEach(card => {
+                    card.classList.remove('selected');
+                });
+                
+                // Select new race
+                const selectedCard = this.racesGrid.querySelector(`[data-race-id="${raceId}"]`);
+                selectedCard.classList.add('selected');
+                
+                this.selectedRaceId = raceId;
+                this.confirmBtn.disabled = false;
+                
+                console.log('🏛️ Rasse ausgewählt:', raceId);
+            }
+
+            confirmRaceSelection() {
+                if (!this.selectedRaceId) return;
+                
+                gameState.selectedRace = window.RaceSystem.getRaceById(this.selectedRaceId);
+                gameState.raceConfirmed = true;
+                gameState.playerGold = gameState.selectedRace.startingGold;
+                
+                console.log('✅ Rasse bestätigt:', gameState.selectedRace.name);
+                
+                // Update UI
+                this.updatePlayerDisplay();
+                this.hideModal();
+                
+                // Notify server (TODO: implement)
+                this.notifyRaceSelection();
+            }
+
+            updatePlayerDisplay() {
+                const raceDisplay = document.getElementById('raceDisplay');
+                const playerName = document.getElementById('playerName');
+                const goldAmount = document.getElementById('goldAmount');
+                
+                if (gameState.selectedRace) {
+                    raceDisplay.textContent = gameState.selectedRace.icon;
+                    goldAmount.textContent = gameState.playerGold;
+                    
+                    if (gameState.currentPlayer) {
+                        playerName.textContent = `${gameState.currentPlayer.name} (${gameState.selectedRace.name})`;
+                    }
+                }
+            }
+
+            hideModal() {
+                this.modal.style.display = 'none';
+            }
+
+            showModal() {
+                this.modal.style.display = 'flex';
+            }
+
+            notifyRaceSelection() {
+                // TODO: Send to server via Socket.io
+                console.log('📡 Sending race selection to server...');
+                // socket.emit('race-selected', { raceId: this.selectedRaceId });
+            }
+        }
+
+        // ========================================
+        // ENHANCED MAP SYSTEM
+        // ========================================
+        
+        class EnhancedMapSystem {
             constructor(gameSettings = null) {
-                console.log('🏗️ MapSystem Konstruktor gestartet...');
-                this.updateDebug('Initialisiere MapSystem...');
+                console.log('🏗️ EnhancedMapSystem Konstruktor gestartet...');
+                this.updateDebug('Initialisiere Enhanced MapSystem...');
                 
                 this.canvas = document.getElementById('gameCanvas');
                 if (!this.canvas) {
@@ -283,7 +579,9 @@
                 this.mapSize = this.gameSettings.mapSize || 30;
                 this.tileSize = 32;
                 this.mapData = [];
-                this.terrainTypes = TERRAIN_DEFINITIONS;
+                this.terrainTypes = window.RaceSystem ? 
+                    {...TERRAIN_DEFINITIONS, ...window.RaceSystem.TERRAIN_MOVEMENT_COSTS} : 
+                    TERRAIN_DEFINITIONS;
                 
                 this.camera = {
                     x: 0,
@@ -295,31 +593,19 @@
                 
                 this.isDragging = false;
                 this.lastMousePos = { x: 0, y: 0 };
+                this.selectedTile = null;
                 
-                console.log('📐 Initialisiere Canvas...');
-                this.updateDebug('Initialisiere Canvas...');
                 this.initializeCanvas();
-                
-                console.log('🗺️ Initialisiere Karte...');
-                this.updateDebug('Initialisiere Karte...');
                 this.initializeMap();
-                
-                console.log('🎮 Setup Event Listeners...');
-                this.updateDebug('Setup Events...');
                 this.setupEventListeners();
-                
-                console.log('🌍 Generiere Terrain...');
-                this.updateDebug('Generiere Terrain...');
                 this.generateTestMap();
-                
-                console.log('🎨 Erste Renderung...');
-                this.updateDebug('Rendere Karte...');
                 this.render();
                 
-                this.updateDebug('✅ Fertig!');
-                console.log('✅ MapSystem vollständig initialisiert!');
+                this.updateDebug('✅ Enhanced MapSystem bereit!');
+                console.log('✅ EnhancedMapSystem vollständig initialisiert!');
             }
 
+            // Copy previous MapSystem methods but enhance them...
             updateDebug(message) {
                 const debugElement = document.getElementById('debugInfo');
                 if (debugElement) {
@@ -329,27 +615,21 @@
 
             initializeCanvas() {
                 try {
-                    // Setze Canvas-Größe auf Container-Größe
                     const container = this.canvas.parentElement;
                     const rect = container.getBoundingClientRect();
                     
-                    console.log('📐 Container Größe:', rect.width, 'x', rect.height);
-                    
-                    // Setze Canvas-Größe
                     this.canvas.width = rect.width;
                     this.canvas.height = rect.height;
                     
-                    // High-DPI Support
                     const dpr = window.devicePixelRatio || 1;
                     this.canvas.width = rect.width * dpr;
                     this.canvas.height = rect.height * dpr;
                     this.ctx.scale(dpr, dpr);
                     
-                    // Style setzen
                     this.canvas.style.width = rect.width + 'px';
                     this.canvas.style.height = rect.height + 'px';
                     
-                    console.log('✅ Canvas initialisiert:', this.canvas.width, 'x', this.canvas.height);
+                    console.log('✅ Enhanced Canvas initialisiert:', this.canvas.width, 'x', this.canvas.height);
                 } catch (error) {
                     console.error('❌ Canvas-Initialisierung fehlgeschlagen:', error);
                 }
@@ -371,7 +651,7 @@
                     }
                     
                     this.centerCamera();
-                    console.log(`✅ Karte initialisiert: ${this.mapSize}x${this.mapSize} = ${this.mapSize * this.mapSize} Felder`);
+                    console.log(`✅ Enhanced Karte initialisiert: ${this.mapSize}x${this.mapSize}`);
                 } catch (error) {
                     console.error('❌ Map-Initialisierung fehlgeschlagen:', error);
                 }
@@ -379,70 +659,329 @@
 
             generateTestMap() {
                 try {
-                    console.log('🎨 Generiere Test-Karte mit buntem Muster...');
+                    console.log('🎨 Generiere Enhanced Test-Karte...');
                     
-                    // Erstelle ein sichtbares buntes Muster
                     for (let y = 0; y < this.mapSize; y++) {
                         for (let x = 0; x < this.mapSize; x++) {
                             const pattern = (x + y) % 7;
                             
                             switch (pattern) {
-                                case 0:
-                                    this.mapData[y][x].terrain = 'grass';
-                                    break;
-                                case 1:
-                                    this.mapData[y][x].terrain = 'forest';
-                                    break;
-                                case 2:
-                                    this.mapData[y][x].terrain = 'water';
-                                    break;
-                                case 3:
-                                    this.mapData[y][x].terrain = 'mountain';
-                                    break;
-                                case 4:
-                                    this.mapData[y][x].terrain = 'swamp';
-                                    break;
-                                case 5:
-                                    this.mapData[y][x].terrain = 'city';
-                                    break;
-                                case 6:
-                                    this.mapData[y][x].terrain = 'castle';
-                                    break;
+                                case 0: this.mapData[y][x].terrain = 'grass'; break;
+                                case 1: this.mapData[y][x].terrain = 'forest'; break;
+                                case 2: this.mapData[y][x].terrain = 'water'; break;
+                                case 3: this.mapData[y][x].terrain = 'mountain'; break;
+                                case 4: this.mapData[y][x].terrain = 'swamp'; break;
+                                case 5: this.mapData[y][x].terrain = 'city'; break;
+                                case 6: this.mapData[y][x].terrain = 'castle'; break;
                             }
                         }
                     }
                     
-                    console.log('✅ Test-Karte mit buntem Muster generiert');
+                    // Add some test units if race is selected
+                    if (gameState.selectedRace) {
+                        this.addTestUnits();
+                    }
+                    
+                    console.log('✅ Enhanced Test-Karte generiert');
                     this.updateMapInfo();
                 } catch (error) {
                     console.error('❌ Karten-Generierung fehlgeschlagen:', error);
                 }
             }
 
+            addTestUnits() {
+                // Add a few test units for demonstration
+                const race = gameState.selectedRace;
+                if (!race || !race.units.length) return;
+                
+                const testPositions = [
+                    { x: 2, y: 2 }, { x: 4, y: 2 }, { x: 6, y: 2 }
+                ];
+                
+                testPositions.forEach((pos, index) => {
+                    if (index < race.units.length && this.isValidGridPosition(pos.x, pos.y)) {
+                        const unitDef = race.units[index];
+                        const unit = new window.RaceSystem.Unit(
+                            unitDef, 
+                            gameState.currentPlayer?.name || 'player', 
+                            pos.x, 
+                            pos.y
+                        );
+                        
+                        this.mapData[pos.y][pos.x].unit = unit;
+                        gameState.units.push(unit);
+                    }
+                });
+                
+                this.updateUnitsDisplay();
+            }
+
             setupEventListeners() {
-                try {
-                    // Canvas Events
-                    this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-                    this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-                    this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-                    this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
-                    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-                    
-                    // Window Events
-                    window.addEventListener('resize', () => {
-                        console.log('🔄 Window resize');
-                        this.initializeCanvas();
-                        this.render();
-                    });
-                    
-                    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-                    
-                    console.log('✅ Event Listeners eingerichtet');
-                } catch (error) {
-                    console.error('❌ Event Listener Setup fehlgeschlagen:', error);
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+                this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+                
+                window.addEventListener('resize', () => {
+                    this.initializeCanvas();
+                    this.render();
+                });
+                
+                window.addEventListener('keydown', (e) => this.onKeyDown(e));
+            }
+
+            onCanvasClick(e) {
+                if (this.isDragging) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const gridPos = this.screenToGrid(x, y);
+                
+                if (this.isValidGridPosition(gridPos.x, gridPos.y)) {
+                    this.selectTile(gridPos.x, gridPos.y);
                 }
             }
 
+            selectTile(x, y) {
+                this.selectedTile = { x, y };
+                const tile = this.mapData[y][x];
+                
+                if (tile.unit) {
+                    this.selectUnit(tile.unit);
+                } else {
+                    this.deselectUnit();
+                }
+                
+                this.render();
+                console.log(`🎯 Tile selected: (${x}, ${y})`);
+            }
+
+            selectUnit(unit) {
+                gameState.selectedUnit = unit;
+                this.updateSelectedUnitDisplay();
+                console.log('👤 Unit selected:', unit.definition.name);
+            }
+
+            deselectUnit() {
+                gameState.selectedUnit = null;
+                this.updateSelectedUnitDisplay();
+            }
+
+            updateSelectedUnitDisplay() {
+                const section = document.getElementById('selectedUnitSection');
+                const info = document.getElementById('selectedUnitInfo');
+                
+                if (gameState.selectedUnit) {
+                    const unit = gameState.selectedUnit;
+                    const def = unit.definition;
+                    
+                    section.style.display = 'block';
+                    info.innerHTML = `
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <div style="font-size: 2em;">${def.icon}</div>
+                            <div style="font-weight: bold;">${def.name} (Lvl ${unit.level})</div>
+                        </div>
+                        <div><strong>HP:</strong> ${unit.currentHp}/${unit.currentStats.hp}</div>
+                        <div><strong>Angriff:</strong> ${unit.currentStats.attack}</div>
+                        <div><strong>Verteidigung:</strong> ${unit.currentStats.defense}</div>
+                        <div><strong>Bewegung:</strong> ${unit.currentStats.movement}</div>
+                        <div><strong>Reichweite:</strong> ${def.attackRange}</div>
+                        <div><strong>Position:</strong> (${unit.x}, ${unit.y})</div>
+                    `;
+                } else {
+                    section.style.display = 'none';
+                }
+            }
+
+            updateUnitsDisplay() {
+                const unitsList = document.getElementById('unitsList');
+                
+                if (gameState.units.length === 0) {
+                    unitsList.innerHTML = '<div class="info-display">Keine Einheiten</div>';
+                    return;
+                }
+                
+                unitsList.innerHTML = gameState.units.map(unit => `
+                    <div class="unit-item ${gameState.selectedUnit?.id === unit.id ? 'selected' : ''}" 
+                         onclick="mapSystem.selectUnitById('${unit.id}')">
+                        <div>
+                            <span style="font-size: 1.2em;">${unit.definition.icon}</span>
+                            ${unit.definition.name} (Lvl ${unit.level})
+                        </div>
+                        <div>
+                            HP: ${unit.currentHp}/${unit.currentStats.hp}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            selectUnitById(unitId) {
+                const unit = gameState.units.find(u => u.id === unitId);
+                if (unit) {
+                    this.selectUnit(unit);
+                    this.selectedTile = { x: unit.x, y: unit.y };
+                    this.render();
+                }
+            }
+
+            render() {
+                try {
+                    const rect = this.canvas.getBoundingClientRect();
+                    
+                    this.ctx.clearRect(0, 0, rect.width, rect.height);
+                    
+                    // Sichtbaren Bereich berechnen
+                    const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
+                    const startY = Math.max(0, Math.floor(this.camera.y / this.tileSize) - 1);
+                    const endX = Math.min(this.mapSize, startX + Math.ceil(rect.width / (this.tileSize * this.camera.zoom)) + 2);
+                    const endY = Math.min(this.mapSize, startY + Math.ceil(rect.height / (this.tileSize * this.camera.zoom)) + 2);
+                    
+                    // Tiles rendern
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            this.renderTile(x, y);
+                        }
+                    }
+                    
+                    // Einheiten rendern
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            this.renderUnit(x, y);
+                        }
+                    }
+                    
+                    // Grid rendern
+                    this.renderGrid(startX, startY, endX, endY);
+                    
+                    // Selection highlight
+                    this.renderSelection();
+                    
+                } catch (error) {
+                    console.error('❌ Render-Fehler:', error);
+                }
+            }
+
+            renderTile(gridX, gridY) {
+                if (!this.isValidGridPosition(gridX, gridY)) return;
+                
+                const tile = this.mapData[gridY][gridX];
+                const terrain = TERRAIN_DEFINITIONS[tile.terrain];
+                if (!terrain) return;
+                
+                const screenPos = this.gridToScreen(gridX, gridY);
+                const size = this.tileSize * this.camera.zoom;
+                
+                // Terrain-Farbe rendern
+                this.ctx.fillStyle = terrain.color;
+                this.ctx.fillRect(screenPos.x, screenPos.y, size, size);
+                
+                // Symbol rendern (wenn groß genug)
+                if (this.camera.zoom >= 0.8 && terrain.symbol) {
+                    this.ctx.font = `${Math.max(12, size * 0.4)}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.strokeStyle = 'black';
+                    this.ctx.lineWidth = 1;
+                    
+                    const centerX = screenPos.x + size / 2;
+                    const centerY = screenPos.y + size / 2;
+                    
+                    this.ctx.strokeText(terrain.symbol, centerX, centerY);
+                    this.ctx.fillText(terrain.symbol, centerX, centerY);
+                }
+            }
+
+            renderUnit(gridX, gridY) {
+                if (!this.isValidGridPosition(gridX, gridY)) return;
+                
+                const tile = this.mapData[gridY][gridX];
+                if (!tile.unit) return;
+                
+                const unit = tile.unit;
+                const screenPos = this.gridToScreen(gridX, gridY);
+                const size = this.tileSize * this.camera.zoom;
+                
+                // Unit background
+                this.ctx.fillStyle = gameState.selectedRace?.color || '#3498db';
+                this.ctx.globalAlpha = 0.7;
+                this.ctx.fillRect(screenPos.x + 2, screenPos.y + 2, size - 4, size - 4);
+                this.ctx.globalAlpha = 1.0;
+                
+                // Unit icon
+                if (this.camera.zoom >= 0.6) {
+                    this.ctx.font = `${Math.max(16, size * 0.6)}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.strokeStyle = 'black';
+                    this.ctx.lineWidth = 2;
+                    
+                    const centerX = screenPos.x + size / 2;
+                    const centerY = screenPos.y + size / 2;
+                    
+                    this.ctx.strokeText(unit.definition.icon, centerX, centerY);
+                    this.ctx.fillText(unit.definition.icon, centerX, centerY);
+                }
+                
+                // Health bar
+                if (this.camera.zoom >= 1.0) {
+                    const barWidth = size - 6;
+                    const barHeight = 4;
+                    const barX = screenPos.x + 3;
+                    const barY = screenPos.y + size - barHeight - 2;
+                    
+                    // Background
+                    this.ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+                    
+                    // Health
+                    const healthRatio = unit.currentHp / unit.currentStats.hp;
+                    this.ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+                    this.ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+                }
+            }
+
+            renderSelection() {
+                if (!this.selectedTile) return;
+                
+                const screenPos = this.gridToScreen(this.selectedTile.x, this.selectedTile.y);
+                const size = this.tileSize * this.camera.zoom;
+                
+                // Selection border
+                this.ctx.strokeStyle = '#f1c40f';
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.strokeRect(screenPos.x, screenPos.y, size, size);
+                this.ctx.setLineDash([]);
+            }
+
+            renderGrid(startX, startY, endX, endY) {
+                if (this.camera.zoom < 0.5) return;
+                
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                
+                for (let x = startX; x <= endX; x++) {
+                    const screenPos = this.gridToScreen(x, 0);
+                    this.ctx.moveTo(screenPos.x, 0);
+                    this.ctx.lineTo(screenPos.x, this.canvas.height);
+                }
+                
+                for (let y = startY; y <= endY; y++) {
+                    const screenPos = this.gridToScreen(0, y);
+                    this.ctx.moveTo(0, screenPos.y);
+                    this.ctx.lineTo(this.canvas.width, screenPos.y);
+                }
+                
+                this.ctx.stroke();
+            }
+
+            // Copy remaining methods from original MapSystem...
             onMouseDown(e) {
                 const rect = this.canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -470,7 +1009,6 @@
                     this.render();
                 }
                 
-                // Update Koordinaten-Anzeige
                 const gridPos = this.screenToGrid(x, y);
                 this.updateCoordinatesDisplay(gridPos.x, gridPos.y);
             }
@@ -561,158 +1099,37 @@
                 this.camera.y = (mapPixelHeight / 2) - (rect.height / 2 / this.camera.zoom);
             }
 
-            render() {
-                try {
-                    const rect = this.canvas.getBoundingClientRect();
-                    
-                    // Canvas leeren
-                    this.ctx.clearRect(0, 0, rect.width, rect.height);
-                    
-                    // Sichtbaren Bereich berechnen
-                    const startX = Math.max(0, Math.floor(this.camera.x / this.tileSize) - 1);
-                    const startY = Math.max(0, Math.floor(this.camera.y / this.tileSize) - 1);
-                    const endX = Math.min(this.mapSize, startX + Math.ceil(rect.width / (this.tileSize * this.camera.zoom)) + 2);
-                    const endY = Math.min(this.mapSize, startY + Math.ceil(rect.height / (this.tileSize * this.camera.zoom)) + 2);
-                    
-                    // Tiles rendern
-                    let tilesRendered = 0;
-                    for (let y = startY; y < endY; y++) {
-                        for (let x = startX; x < endX; x++) {
-                            this.renderTile(x, y);
-                            tilesRendered++;
-                        }
-                    }
-                    
-                    // Grid rendern
-                    this.renderGrid(startX, startY, endX, endY);
-                    
-                    console.log(`🎨 Render: ${tilesRendered} Tiles, Bereich: (${startX},${startY}) bis (${endX},${endY})`);
-                } catch (error) {
-                    console.error('❌ Render-Fehler:', error);
-                }
-            }
-
-            renderTile(gridX, gridY) {
-                if (!this.isValidGridPosition(gridX, gridY)) return;
-                
-                const tile = this.mapData[gridY][gridX];
-                const terrain = this.terrainTypes[tile.terrain];
-                if (!terrain) return;
-                
-                const screenPos = this.gridToScreen(gridX, gridY);
-                const size = this.tileSize * this.camera.zoom;
-                
-                // Terrain-Farbe rendern
-                this.ctx.fillStyle = terrain.color;
-                this.ctx.fillRect(screenPos.x, screenPos.y, size, size);
-                
-                // Symbol rendern (wenn groß genug)
-                if (this.camera.zoom >= 0.8 && terrain.symbol) {
-                    this.ctx.font = `${Math.max(12, size * 0.5)}px Arial`;
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.fillStyle = 'white';
-                    this.ctx.strokeStyle = 'black';
-                    this.ctx.lineWidth = 2;
-                    
-                    const centerX = screenPos.x + size / 2;
-                    const centerY = screenPos.y + size / 2;
-                    
-                    this.ctx.strokeText(terrain.symbol, centerX, centerY);
-                    this.ctx.fillText(terrain.symbol, centerX, centerY);
-                }
-            }
-
-            renderGrid(startX, startY, endX, endY) {
-                if (this.camera.zoom < 0.5) return;
-                
-                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                this.ctx.lineWidth = 1;
-                this.ctx.beginPath();
-                
-                // Vertikale Linien
-                for (let x = startX; x <= endX; x++) {
-                    const screenPos = this.gridToScreen(x, 0);
-                    this.ctx.moveTo(screenPos.x, 0);
-                    this.ctx.lineTo(screenPos.x, this.canvas.height);
-                }
-                
-                // Horizontale Linien
-                for (let y = startY; y <= endY; y++) {
-                    const screenPos = this.gridToScreen(0, y);
-                    this.ctx.moveTo(0, screenPos.y);
-                    this.ctx.lineTo(this.canvas.width, screenPos.y);
-                }
-                
-                this.ctx.stroke();
-            }
-
-            // ========================================
-            // PUBLIC METHODS
-            // ========================================
-
             zoomIn() {
-                console.log('🔍 Zoom In');
                 this.camera.zoom = Math.min(this.camera.maxZoom, this.camera.zoom * 1.2);
                 this.render();
             }
 
             zoomOut() {
-                console.log('🔍 Zoom Out');
                 this.camera.zoom = Math.max(this.camera.minZoom, this.camera.zoom / 1.2);
                 this.render();
             }
 
             resetView() {
-                console.log('🏠 Reset View');
                 this.camera.zoom = 1.0;
                 this.centerCamera();
                 this.render();
             }
 
-            regenerateMap() {
-                console.log('🎲 Regeneriere Karte');
-                this.generateTestMap();
-                this.render();
-            }
-
-            returnToLobby() {
-                if (confirm('🚪 Zur Lobby zurückkehren?\n\nDer Spielfortschritt geht verloren!')) {
-                    window.location.href = '/';
-                }
-            }
-
             updateMapInfo() {
-                const currentPlayerName = this.gameSettings.currentPlayer?.name || 'Unbekannt';
-                const cityCount = this.countTerrain('city');
-                const castleCount = this.countTerrain('castle');
-                const waterCount = this.countTerrain('water');
-                const mountainCount = this.countTerrain('mountain');
+                const currentPlayerName = gameState.currentPlayer?.name || 'Unbekannt';
+                const selectedRaceName = gameState.selectedRace?.name || 'Nicht gewählt';
                 
                 document.getElementById('mapInfo').innerHTML = `
                     <strong>Spiel-Info:</strong><br>
                     Spieler: ${currentPlayerName}<br>
+                    Rasse: ${selectedRaceName}<br>
                     Spiel-ID: ${this.gameSettings.gameId}<br>
                     <hr style="margin: 8px 0; opacity: 0.3;">
                     <strong>Karten-Info:</strong><br>
                     Größe: ${this.mapSize}x${this.mapSize}<br>
-                    Städte: ${cityCount}<br>
-                    Burgen: ${castleCount}<br>
-                    Wasser: ${waterCount}<br>
-                    Berge: ${mountainCount}
+                    Einheiten: ${gameState.units.length}<br>
+                    Runde: ${gameState.turnNumber}
                 `;
-            }
-
-            countTerrain(terrainType) {
-                let count = 0;
-                for (let y = 0; y < this.mapSize; y++) {
-                    for (let x = 0; x < this.mapSize; x++) {
-                        if (this.mapData[y][x].terrain === terrainType) {
-                            count++;
-                        }
-                    }
-                }
-                return count;
             }
 
             updateCoordinatesDisplay(gridX, gridY) {
@@ -721,18 +1138,66 @@
                 
                 const terrainType = this.isValidGridPosition(gridX, gridY) ? 
                     this.mapData[gridY][gridX].terrain : 'außerhalb';
-                const terrainName = this.terrainTypes[terrainType]?.name || terrainType;
+                const terrainName = TERRAIN_DEFINITIONS[terrainType]?.name || terrainType;
+                
+                let unitInfo = '';
+                if (this.isValidGridPosition(gridX, gridY) && this.mapData[gridY][gridX].unit) {
+                    const unit = this.mapData[gridY][gridX].unit;
+                    unitInfo = `<br>Einheit: ${unit.definition.name}`;
+                }
                 
                 coords.innerHTML = `
                     X: ${gridX}, Y: ${gridY}<br>
-                    Terrain: ${terrainName}<br>
+                    Terrain: ${terrainName}${unitInfo}<br>
                     Zoom: ${Math.round(this.camera.zoom * 100)}%
                 `;
             }
         }
 
         // ========================================
-        // UTILITY FUNCTIONS
+        // TERRAIN DEFINITIONS (Fallback)
+        // ========================================
+        
+        const TERRAIN_DEFINITIONS = {
+            grass: {
+                name: 'Wiese',
+                color: '#27ae60',
+                symbol: '🌱'
+            },
+            forest: {
+                name: 'Wald',
+                color: '#229954',
+                symbol: '🌲'
+            },
+            mountain: {
+                name: 'Berge',
+                color: '#95a5a6',
+                symbol: '⛰️'
+            },
+            swamp: {
+                name: 'Sumpf',
+                color: '#8b4513',
+                symbol: '🐸'
+            },
+            water: {
+                name: 'Wasser',
+                color: '#3498db',
+                symbol: '💧'
+            },
+            city: {
+                name: 'Stadt',
+                color: '#e67e22',
+                symbol: '🏘️'
+            },
+            castle: {
+                name: 'Burg',
+                color: '#9b59b6',
+                symbol: '🏰'
+            }
+        };
+
+        // ========================================
+        // GAME INITIALIZATION
         // ========================================
         
         function getGameSettingsFromURL() {
@@ -760,40 +1225,93 @@
             };
         }
 
+        function setupButtonEvents() {
+            // Zoom controls
+            document.getElementById('zoomInBtn').addEventListener('click', () => mapSystem.zoomIn());
+            document.getElementById('zoomOutBtn').addEventListener('click', () => mapSystem.zoomOut());
+            document.getElementById('resetViewBtn').addEventListener('click', () => mapSystem.resetView());
+            document.getElementById('zoomInBtn2').addEventListener('click', () => mapSystem.zoomIn());
+            document.getElementById('zoomOutBtn2').addEventListener('click', () => mapSystem.zoomOut());
+            document.getElementById('resetViewBtn2').addEventListener('click', () => mapSystem.resetView());
+            
+            // Game controls
+            document.getElementById('endTurnBtn').addEventListener('click', () => {
+                console.log('⏭️ Zug beendet');
+                // TODO: Implement turn logic
+            });
+            
+            document.getElementById('upgradeUnitBtn').addEventListener('click', () => {
+                if (gameState.selectedUnit) {
+                    console.log('⬆️ Einheit aufwerten:', gameState.selectedUnit.definition.name);
+                    // TODO: Implement upgrade logic
+                }
+            });
+            
+            document.getElementById('buyUnitsBtn').addEventListener('click', () => {
+                console.log('🛒 Einheiten kaufen');
+                // TODO: Implement unit purchase
+            });
+            
+            document.getElementById('returnLobbyBtn').addEventListener('click', () => {
+                if (confirm('🚪 Zur Lobby zurückkehren?\n\nDer Spielfortschritt geht verloren!')) {
+                    window.location.href = '/';
+                }
+            });
+        }
+
         // ========================================
-        // GLOBAL VARIABLES & INITIALIZATION
+        // GLOBAL VARIABLES
         // ========================================
         
         let mapSystem = null;
+        let raceSelection = null;
 
-        // Initialisierung wenn DOM vollständig geladen ist
+        // ========================================
+        // MAIN INITIALIZATION
+        // ========================================
+        
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('📄 DOM geladen');
+            console.log('📄 Game DOM geladen');
             
-            // Warte kurz für vollständiges Layout
             setTimeout(() => {
-                console.log('🚀 Starte Spiel-Initialisierung...');
+                console.log('🚀 Starte erweiterte Spiel-Initialisierung...');
                 
                 try {
-                    // Lade Spiel-Einstellungen
+                    // Load game settings
                     const gameSettings = getGameSettingsFromURL();
+                    gameState.gameSettings = gameSettings;
+                    gameState.currentPlayer = gameSettings.currentPlayer;
                     
-                    // Erstelle MapSystem
-                    console.log('🗺️ Erstelle MapSystem...');
-                    mapSystem = new MapSystem(gameSettings);
+                    // Initialize race selection
+                    console.log('🏛️ Initialisiere Rassen-Auswahl...');
+                    raceSelection = new RaceSelection();
                     
-                    // Button Events einrichten
+                    // Initialize enhanced map system
+                    console.log('🗺️ Erstelle Enhanced MapSystem...');
+                    mapSystem = new EnhancedMapSystem(gameSettings);
+                    
+                    // Setup button events
                     console.log('🎮 Verbinde Button-Events...');
                     setupButtonEvents();
                     
-                    // Willkommens-Nachricht
+                    // Update initial display
+                    mapSystem.updateMapInfo();
+                    
+                    console.log('✅ Erweiterte Spiel-Initialisierung abgeschlossen!');
+                    
+                    // Show welcome message
                     setTimeout(() => {
                         const playerName = gameSettings.currentPlayer?.name || 'Unbekannt';
                         console.log(`🎮 Willkommen ${playerName}!`);
-                        alert(`🎮 Spiel gestartet!\n\nWillkommen ${playerName}!\nKarte: ${gameSettings.mapSize}x${gameSettings.mapSize}\nSpieler: ${gameSettings.playerCount}`);
+                        alert(`🎮 Spiel gestartet!\n\nWillkommen ${playerName}!\n\nBitte wähle zuerst deine Rasse aus.`);
                     }, 1000);
                     
-                    console.log('✅ Spiel erfolgreich initialisiert!');
                 } catch (error) {
-                    console.error('❌ Initialisierung fehlgeschlagen:', error);
-                    alert('Fehler beim Laden des Spielfelds:\n' + error.message + '\n\nBitte laden Sie die Seite neu
+                    console.error('❌ Erweiterte Initialisierung fehlgeschlagen:', error);
+                    alert('Fehler beim Laden des Spielfelds:\n' + error.message + '\n\nBitte laden Sie die Seite neu.');
+                }
+            }, 500);
+        });
+    </script>
+</body>
+</html>
