@@ -343,6 +343,12 @@ class RaceSelection {
             window.dispatchEvent(new CustomEvent('allRacesSelected', {
                 detail: { message: 'Alle Rassen gewählt (Demo)' }
             }));
+            
+            // Start map generation
+            if (window.gameController && typeof window.gameController.startPlayingPhase === 'function') {
+                console.log('🎮 Demo-Modus: Starte Kartengenerierung...');
+                window.gameController.startPlayingPhase();
+            }
         }, 2000);
     }
 

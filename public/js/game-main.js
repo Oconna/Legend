@@ -254,6 +254,10 @@ class GameController {
             if (!this.socketManager || !this.socketManager.socket || !this.socketManager.socket.connected) {
                 console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
                 this.startDemoMode();
+            } else {
+                // If we're connected but haven't joined a game, start demo mode anyway
+                console.log('🤖 Demo-Modus: Verbunden aber kein Spiel beigetreten, starte automatisch...');
+                this.startDemoMode();
             }
         }, 5000); // Increased delay from 3000ms to 5000ms
     }
@@ -522,7 +526,14 @@ class GameController {
             this.raceSelection.hide();
         }
         
+        // Switch to playing phase
         this.setGamePhase('playing');
+        
+        // Generate map if not already generated
+        if (this.mapSystem && (!this.mapSystem.mapData || this.mapSystem.mapData.length === 0)) {
+            console.log('🗺️ Generiere Karte...');
+            this.mapSystem.generateMap();
+        }
         
         // Initialize turn system
         this.initializeTurnSystem();
@@ -537,6 +548,8 @@ class GameController {
         this.updatePlayerDisplay();
         this.updateMapInfo();
         this.updateUnitsOverview();
+        
+        console.log('✅ Spielphase gestartet');
     }
 
     initializeTurnSystem() {
@@ -808,13 +821,22 @@ class GameController {
 
     onRaceConfirmed(data) {
         console.log('🏛️ Rasse bestätigt:', data);
+        
+        // Update game state
+        this.gameState.setSelectedRace(data.race);
+        
+        // Update UI
         this.updatePlayerDisplay();
         this.updateRaceStatusPanel();
         
-        // Send race selection to server
+        // Send race selection to server if available
         if (this.socketManager && this.gameState.selectedRace) {
             this.socketManager.selectRace(this.gameState.selectedRace.id);
         }
+        
+        // Start map generation and switch to playing phase
+        console.log('🎮 Rasse bestätigt, starte Kartengenerierung...');
+        this.startPlayingPhase();
     }
 
     onAllRacesSelected(data) {
@@ -826,17 +848,36 @@ class GameController {
             this.mapSystem.loadServerMap(data.map);
         }
         
-        // Start playing phase
+        // Start playing phase with map generation
         setTimeout(() => this.startPlayingPhase(), 1000);
     }
 
     onGameJoined(data) {
         console.log('🎉 Spieler hat das Spiel beigetreten:', data);
+        
+        if (!data.success) {
+            console.error('❌ Fehler beim Beitreten zum Spiel:', data.error);
+            this.showError(`Fehler beim Beitreten zum Spiel: ${data.error}`);
+            return;
+        }
+        
+        // Now that we've joined the game, we can request the current game state
+        if (this.socketManager) {
+            setTimeout(() => {
+                console.log('📡 Fordere Spielstand vom Server an...');
+                this.socketManager.requestGameState();
+            }, 1000); // Small delay to ensure server is ready
+        }
+        
+        // Update UI
         this.updatePlayerDisplay();
         this.updateRaceStatusPanel();
         this.updateMapInfo();
         this.updateUnitsOverview();
-        this.startPlayingPhase(); // Start the game flow after joining
+        
+        // Start race selection
+        console.log('🏛️ Starte Rassenauswahl nach Spielbeitritt...');
+        this.startRaceSelection();
     }
 
     // ========================================
@@ -1044,7 +1085,14 @@ class GameController {
 
     onGameStateFailed(data) {
         console.error('❌ Fehler beim Laden des Spielstands vom Server:', data.error);
-        this.showError('Fehler beim Laden des Spielstands');
+        
+        // If we can't load the game state, try to start the race selection anyway
+        if (data.error === 'Spiel nicht gefunden') {
+            console.warn('⚠️ Spiel nicht gefunden, starte Rassenauswahl im Demo-Modus...');
+            this.startDemoMode();
+        } else {
+            this.showError('Fehler beim Laden des Spielstands');
+        }
     }
 
     // ========================================
