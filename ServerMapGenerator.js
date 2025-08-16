@@ -1,4 +1,4 @@
-// ServerMapGenerator.js - Server-seitige Kartengenerierung
+// ServerMapGenerator.js - Server-seitige Kartengenerierung (Railway-kompatibel)
 
 console.log('🗺️ Initialisiere Server Map Generator...');
 
@@ -18,7 +18,7 @@ class ServerMapGenerator {
             { id: "village", name: "Dorf", hp: 50, goldIncome: 10, canTrain: false, probability: 0.3 }
         ];
 
-        this.generatedMaps = new Map(); // Cache für generierte Karten
+        this.generatedMaps = new Map();
     }
 
     // ========================================
@@ -29,19 +29,11 @@ class ServerMapGenerator {
         console.log(`🗺️ Generiere synchronisierte Karte für Spiel ${gameId}...`);
         
         try {
-            // Verwende gameId als Seed für Determinismus
             const mapSeed = seed || this.generateSeedFromGameId(gameId);
-            
-            // Generiere Basis-Karte
             const map = this.generateBaseMap(mapSize, mapSeed);
-            
-            // Platziere Gebäude
             this.placeBuildingsOnMap(map, mapSize, mapSeed, players.length);
-            
-            // Generiere Startpositionen für Spieler
             this.generateStartingPositions(map, mapSize, players, mapSeed);
             
-            // Cache die Karte
             this.generatedMaps.set(gameId, {
                 map: map,
                 seed: mapSeed,
@@ -85,17 +77,12 @@ class ServerMapGenerator {
             }
         }
         
-        // Nachbearbeitung für realistische Terrain-Cluster
         this.smoothTerrain(map, size, seed);
-        
         return map;
     }
 
     generateTile(x, y, mapSize, seed) {
-        // Seeded Random für Determinismus
         const random = this.seededRandom(x + y * 1000 + seed * 10000);
-        
-        // Terrain-Auswahl basierend auf Position und Noise
         const terrain = this.selectTerrain(x, y, mapSize, random);
         
         return {
@@ -117,10 +104,8 @@ class ServerMapGenerator {
         const maxDistance = Math.sqrt(centerX ** 2 + centerY ** 2);
         const normalizedDistance = distanceFromCenter / maxDistance;
         
-        // Terrain-Wahrscheinlichkeiten basierend auf Position
         let terrainProbabilities = [...this.terrainTypes];
         
-        // Berge eher am Rand
         if (normalizedDistance > 0.6) {
             const mountainIndex = terrainProbabilities.findIndex(t => t.id === 'mountains');
             if (mountainIndex >= 0) {
@@ -128,7 +113,6 @@ class ServerMapGenerator {
             }
         }
         
-        // Ebenen eher in der Mitte
         if (normalizedDistance < 0.4) {
             const plainsIndex = terrainProbabilities.findIndex(t => t.id === 'plains');
             if (plainsIndex >= 0) {
@@ -136,41 +120,36 @@ class ServerMapGenerator {
             }
         }
         
-        // Weighted Selection
         const totalProbability = terrainProbabilities.reduce((sum, t) => sum + t.probability, 0);
         let normalizedRandom = random * totalProbability;
         
         for (const terrain of terrainProbabilities) {
             normalizedRandom -= terrain.probability;
             if (normalizedRandom <= 0) {
-                return { ...terrain }; // Kopie zurückgeben
+                return { ...terrain };
             }
         }
         
-        // Fallback
         return { ...this.terrainTypes[0] };
     }
 
     smoothTerrain(map, size, seed) {
         console.log('🌍 Glätte Terrain für realistische Cluster...');
         
-        // Mehrere Durchgänge für natürlichere Terrain-Verteilung
         for (let pass = 0; pass < 3; pass++) {
-            const newMap = JSON.parse(JSON.stringify(map)); // Deep copy
+            const newMap = JSON.parse(JSON.stringify(map));
             
             for (let y = 1; y < size - 1; y++) {
                 for (let x = 1; x < size - 1; x++) {
                     const neighbors = this.getNeighbors(map, x, y);
                     const dominantTerrain = this.findDominantTerrain(neighbors);
                     
-                    // 30% Chance, das Terrain dem dominanten Nachbarn anzupassen
                     if (dominantTerrain && this.seededRandom(x + y * size + pass * 10000 + seed) < 0.3) {
                         newMap[y][x].terrain = { ...dominantTerrain };
                     }
                 }
             }
             
-            // Aktualisiere Map für nächsten Durchgang
             for (let y = 0; y < size; y++) {
                 for (let x = 0; x < size; x++) {
                     map[y][x] = newMap[y][x];
@@ -223,21 +202,15 @@ class ServerMapGenerator {
     placeBuildingsOnMap(map, mapSize, seed, playerCount = 4) {
         console.log(`🏘️ Platziere Gebäude auf der Karte...`);
         
-        // Berechne Anzahl der Gebäude basierend auf Kartengröße
         const totalTiles = mapSize * mapSize;
-        const buildingDensity = 0.025; // 2.5% der Felder haben Gebäude
+        const buildingDensity = 0.025;
         const totalBuildings = Math.floor(totalTiles * buildingDensity);
-        
-        // Stelle sicher, dass genug Hauptgebäude für Spieler vorhanden sind
         const mainBuildings = Math.max(playerCount + 2, Math.floor(totalBuildings * 0.4));
         const otherBuildings = totalBuildings - mainBuildings;
         
         console.log(`  Platziere ${mainBuildings} Hauptgebäude und ${otherBuildings} weitere Gebäude`);
         
-        // Platziere Hauptgebäude (Städte und Burgen)
         this.placeMainBuildings(map, mapSize, mainBuildings, seed);
-        
-        // Platziere andere Gebäude
         this.placeOtherBuildings(map, mapSize, otherBuildings, seed);
         
         console.log('✅ Gebäude-Platzierung abgeschlossen');
@@ -308,24 +281,20 @@ class ServerMapGenerator {
     }
 
     isSuitableForBuilding(map, x, y, mapSize, isMainBuilding = false) {
-        // Bounds check
         if (x < 0 || x >= mapSize || y < 0 || y >= mapSize) {
             return false;
         }
         
         const tile = map[y][x];
         
-        // Schon ein Gebäude vorhanden
         if (tile.building) {
             return false;
         }
         
-        // Ungeeignetes Terrain
         if (tile.terrain.id === 'water' || tile.terrain.id === 'mountains') {
             return false;
         }
         
-        // Für Hauptgebäude: Mindestabstand zu anderen Gebäuden
         if (isMainBuilding) {
             const minDistance = 3;
             
@@ -358,29 +327,330 @@ class ServerMapGenerator {
             return;
         }
         
-        // Finde alle verfügbaren Gebäude
         const availableBuildings = this.findAllBuildings(map, 'city', 'castle');
         
         if (availableBuildings.length < players.length) {
             console.warn(`⚠️ Nicht genug Gebäude für alle Spieler (${availableBuildings.length} < ${players.length})`);
         }
         
-        // Shuffle buildings für faire Verteilung
         this.shuffleArray(availableBuildings, seed);
         
-        // Weise jedem Spieler ein Gebäude zu
         for (let i = 0; i < players.length && i < availableBuildings.length; i++) {
             const player = players[i];
             const building = availableBuildings[i];
             
-            // Setze Spieler als Besitzer
             map[building.y][building.x].owner = player.id;
             map[building.y][building.x].building.owner = player.id;
             
-            // Erstelle Starteinheit neben dem Gebäude
             const unitPosition = this.findNearbyEmptyTile(map, building.x, building.y, mapSize);
             if (unitPosition) {
                 const startingUnit = this.createStartingUnit(player, seed + i);
                 map[unitPosition.y][unitPosition.x].unit = startingUnit;
                 
-                console.log
+                console.log(`  Spieler ${player.name}: Gebäude bei (${building.x}, ${building.y}), Einheit bei (${unitPosition.x}, ${unitPosition.y})`);
+            } else {
+                console.warn(`⚠️ Keine freie Position für Starteinheit von Spieler ${player.name} gefunden`);
+            }
+        }
+        
+        console.log('✅ Startpositionen generiert');
+    }
+
+    findAllBuildings(map, ...buildingTypes) {
+        const buildings = [];
+        
+        for (let y = 0; y < map.length; y++) {
+            for (let x = 0; x < map[y].length; x++) {
+                const tile = map[y][x];
+                if (tile.building && buildingTypes.includes(tile.building.type)) {
+                    buildings.push({ x, y, building: tile.building });
+                }
+            }
+        }
+        
+        return buildings;
+    }
+
+    findNearbyEmptyTile(map, centerX, centerY, mapSize, maxRadius = 3) {
+        for (let radius = 1; radius <= maxRadius; radius++) {
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    const x = centerX + dx;
+                    const y = centerY + dy;
+                    
+                    if (x >= 0 && x < mapSize && y >= 0 && y < mapSize) {
+                        const tile = map[y][x];
+                        if (!tile.unit && !tile.building && tile.terrain.id !== 'water') {
+                            return { x, y };
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    createStartingUnit(player, seed) {
+        return {
+            id: `unit_${player.id}_${Date.now()}`,
+            type: 'warrior',
+            name: 'Krieger',
+            owner: player.id,
+            hp: 30,
+            maxHp: 30,
+            attack: 8,
+            defense: 4,
+            movement: 2,
+            maxMovement: 2,
+            range: 1,
+            level: 1,
+            experience: 0,
+            icon: '⚔️'
+        };
+    }
+
+    // ========================================
+    // HILFSFUNKTIONEN
+    // ========================================
+
+    generateSeedFromGameId(gameId) {
+        let hash = 0;
+        const str = gameId.toString();
+        
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        
+        return Math.abs(hash);
+    }
+
+    seededRandom(seed) {
+        const x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+    }
+
+    shuffleArray(array, seed) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(this.seededRandom(seed + i) * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // ========================================
+    // MAP CACHE VERWALTUNG
+    // ========================================
+
+    getMap(gameId) {
+        return this.generatedMaps.get(gameId);
+    }
+
+    hasMap(gameId) {
+        return this.generatedMaps.has(gameId);
+    }
+
+    removeMap(gameId) {
+        const deleted = this.generatedMaps.delete(gameId);
+        if (deleted) {
+            console.log(`🗑️ Karte für Spiel ${gameId} aus Cache entfernt`);
+        }
+        return deleted;
+    }
+
+    clearOldMaps(maxAge = 3600000) {
+        const now = Date.now();
+        let cleared = 0;
+        
+        for (const [gameId, mapData] of this.generatedMaps.entries()) {
+            if (now - mapData.generatedAt > maxAge) {
+                this.generatedMaps.delete(gameId);
+                cleared++;
+            }
+        }
+        
+        if (cleared > 0) {
+            console.log(`🧹 ${cleared} alte Karten aus Cache entfernt`);
+        }
+        
+        return cleared;
+    }
+
+    getCacheStats() {
+        return {
+            totalMaps: this.generatedMaps.size,
+            cacheSize: JSON.stringify(Array.from(this.generatedMaps.values())).length,
+            maps: Array.from(this.generatedMaps.keys())
+        };
+    }
+
+    // ========================================
+    // MAP VALIDATION
+    // ========================================
+
+    validateMap(map, expectedSize) {
+        const errors = [];
+        
+        if (!Array.isArray(map)) {
+            errors.push('Map ist kein Array');
+            return errors;
+        }
+        
+        if (map.length !== expectedSize) {
+            errors.push(`Map-Höhe ist ${map.length}, erwartet ${expectedSize}`);
+        }
+        
+        for (let y = 0; y < map.length; y++) {
+            if (!Array.isArray(map[y])) {
+                errors.push(`Zeile ${y} ist kein Array`);
+                continue;
+            }
+            
+            if (map[y].length !== expectedSize) {
+                errors.push(`Zeile ${y} hat Länge ${map[y].length}, erwartet ${expectedSize}`);
+            }
+            
+            for (let x = 0; x < map[y].length; x++) {
+                const tile = map[y][x];
+                
+                if (!tile || typeof tile !== 'object') {
+                    errors.push(`Tile bei (${x}, ${y}) ist ungültig`);
+                    continue;
+                }
+                
+                if (tile.x !== x || tile.y !== y) {
+                    errors.push(`Tile-Koordinaten bei (${x}, ${y}) stimmen nicht überein`);
+                }
+                
+                if (!tile.terrain || typeof tile.terrain !== 'object') {
+                    errors.push(`Tile bei (${x}, ${y}) hat kein gültiges Terrain`);
+                }
+            }
+        }
+        
+        return errors;
+    }
+
+    // ========================================
+    // MAP STATISTICS
+    // ========================================
+
+    generateMapStatistics(map) {
+        const stats = {
+            size: map.length,
+            totalTiles: map.length * map.length,
+            terrain: {},
+            buildings: {},
+            players: new Set()
+        };
+        
+        for (let y = 0; y < map.length; y++) {
+            for (let x = 0; x < map[y].length; x++) {
+                const tile = map[y][x];
+                
+                const terrainId = tile.terrain.id;
+                stats.terrain[terrainId] = (stats.terrain[terrainId] || 0) + 1;
+                
+                if (tile.building) {
+                    const buildingType = tile.building.type;
+                    stats.buildings[buildingType] = (stats.buildings[buildingType] || 0) + 1;
+                }
+                
+                if (tile.owner) {
+                    stats.players.add(tile.owner);
+                }
+            }
+        }
+        
+        stats.playerCount = stats.players.size;
+        stats.players = Array.from(stats.players);
+        
+        return stats;
+    }
+
+    // ========================================
+    // DEBUG METHODEN
+    // ========================================
+
+    debugMap(gameId) {
+        const mapData = this.generatedMaps.get(gameId);
+        if (!mapData) {
+            console.log(`❌ Keine Karte für Spiel ${gameId} gefunden`);
+            return;
+        }
+        
+        const stats = this.generateMapStatistics(mapData.map);
+        
+        console.log(`🗺️ Debug Info für Karte ${gameId}`);
+        console.log('Seed:', mapData.seed);
+        console.log('Größe:', mapData.size);
+        console.log('Generiert am:', new Date(mapData.generatedAt));
+        console.log('Terrain-Verteilung:', stats.terrain);
+        console.log('Gebäude-Verteilung:', stats.buildings);
+        console.log('Spieler:', stats.players);
+    }
+
+    testMapGeneration(testCount = 3) {
+        console.log(`🧪 Teste Kartengenerierung (${testCount} Karten)...`);
+        
+        const results = [];
+        
+        for (let i = 0; i < testCount; i++) {
+            const testGameId = `test_${i}`;
+            const mapSize = 15;
+            const testPlayers = [
+                { id: `player_0`, name: `TestPlayer0` },
+                { id: `player_1`, name: `TestPlayer1` }
+            ];
+            
+            const startTime = Date.now();
+            const result = this.generateSynchronizedMap(testGameId, mapSize, null, testPlayers);
+            const duration = Date.now() - startTime;
+            
+            if (result.success) {
+                const stats = this.generateMapStatistics(result.map);
+                results.push({
+                    gameId: testGameId,
+                    mapSize: mapSize,
+                    playerCount: testPlayers.length,
+                    duration: duration,
+                    stats: stats,
+                    success: true
+                });
+            } else {
+                results.push({
+                    gameId: testGameId,
+                    mapSize: mapSize,
+                    playerCount: testPlayers.length,
+                    duration: duration,
+                    error: result.error,
+                    success: false
+                });
+            }
+        }
+        
+        console.log('🧪 Test-Ergebnisse:');
+        results.forEach(r => {
+            console.log(`  ${r.gameId}: ${r.success ? '✅' : '❌'} (${r.duration}ms)`);
+        });
+        
+        results.forEach(r => this.removeMap(r.gameId));
+        
+        return results;
+    }
+}
+
+// ========================================
+// EXPORT
+// ========================================
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ServerMapGenerator;
+}
+
+if (typeof window !== 'undefined') {
+    window.ServerMapGenerator = ServerMapGenerator;
+}
+
+console.log('✅ Server Map Generator geladen (Railway-kompatibel)');
