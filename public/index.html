@@ -207,6 +207,20 @@
             font-size: 1.2em;
         }
 
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         @media (max-width: 768px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -316,8 +330,21 @@
         </div>
     </div>
 
-    <!-- Socket.io Client Library -->
+    <!-- JavaScript Dependencies in korrekter Reihenfolge -->
     <script src="/socket.io/socket.io.js"></script>
+
+    <!-- 1. Konfiguration und Utilities zuerst -->
+    <script src="/js/game-config.js"></script>
+    <script src="/js/game-utils.js"></script>
+
+    <!-- 2. State-Manager -->
+    <script src="/js/game-state.js"></script>
+
+    <!-- 3. Lobby-spezifische Module -->
+    <script src="/js/socket-manager.js"></script>
+    <script src="/js/races.js"></script>
+
+    <!-- 4. Lobby-Logik -->
     <script>
         class MultiplayerLobby {
             constructor() {
@@ -338,7 +365,11 @@
                     console.log('✅ Socket.io initialisiert');
                 } catch (error) {
                     console.error('❌ Socket.io Fehler:', error);
-                    alert('Fehler beim Verbinden zum Server. Prüfen Sie ob der Server läuft.');
+                    GameUtils.showErrorDialog({
+                        context: 'Socket Connection',
+                        message: 'Fehler beim Verbinden zum Server. Prüfen Sie ob der Server läuft.',
+                        error: error
+                    });
                     return;
                 }
 
@@ -474,8 +505,13 @@
                 const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
                 const mapSize = parseInt(document.getElementById('mapSize').value);
 
-                if (!playerName || !gameName) {
-                    alert('Bitte Name und Spielname eingeben!');
+                if (!GameUtils.isValidName(playerName)) {
+                    alert('Bitte gültigen Namen eingeben (2-20 Zeichen, nur Buchstaben, Zahlen, Leerzeichen, - und _)!');
+                    return;
+                }
+
+                if (!GameUtils.isValidGameName(gameName)) {
+                    alert('Bitte gültigen Spielnamen eingeben (3-30 Zeichen)!');
                     return;
                 }
 
@@ -501,8 +537,8 @@
 
             joinGame(gameId) {
                 const playerName = document.getElementById('playerName').value.trim();
-                if (!playerName) {
-                    alert('Bitte erst deinen Namen eingeben!');
+                if (!GameUtils.isValidName(playerName)) {
+                    alert('Bitte erst einen gültigen Namen eingeben!');
                     return;
                 }
 
@@ -552,8 +588,8 @@
                     gameItem.className = 'game-item';
                     gameItem.innerHTML = `
                         <div class="game-info">
-                            <h3>${game.name}</h3>
-                            <p>Host: ${game.hostName} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
+                            <h3>${GameUtils.sanitizeUserInput(game.name)}</h3>
+                            <p>Host: ${GameUtils.sanitizeUserInput(game.hostName)} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
                         </div>
                         <button class="btn" onclick="lobby.joinGame('${game.id}')" 
                                 ${game.playerCount >= game.maxPlayers ? 'disabled' : ''}>
@@ -590,7 +626,7 @@
                         const isCurrentPlayer = player.name === this.currentPlayer?.name;
                         slot.className = `player-slot occupied ${player.ready ? 'ready' : ''}`;
                         slot.innerHTML = `
-                            <div>👤 ${player.name} ${isCurrentPlayer ? '(Du)' : ''}</div>
+                            <div>👤 ${GameUtils.sanitizeUserInput(player.name)} ${isCurrentPlayer ? '(Du)' : ''}</div>
                             <div style="margin-top: 10px;">
                                 <span class="status-indicator ${player.ready ? 'status-ready' : 'status-waiting'}"></span>
                                 ${player.ready ? 'Bereit ✅' : 'Wartet... ⏳'}
@@ -747,6 +783,45 @@
         function refreshGames() {
             lobby.refreshGames();
         }
+
+        // Input-Validierung hinzufügen
+        document.addEventListener('DOMContentLoaded', () => {
+            const playerNameInput = document.getElementById('playerName');
+            const gameNameInput = document.getElementById('gameName');
+            
+            if (playerNameInput) {
+                playerNameInput.addEventListener('input', (e) => {
+                    const value = e.target.value;
+                    const isValid = GameUtils.isValidName(value);
+                    
+                    e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
+                    
+                    if (!isValid && value.length > 0) {
+                        e.target.title = 'Name muss 2-20 Zeichen lang sein (nur Buchstaben, Zahlen, Leerzeichen, - und _)';
+                    } else {
+                        e.target.title = '';
+                    }
+                });
+            }
+            
+            if (gameNameInput) {
+                gameNameInput.addEventListener('input', (e) => {
+                    const value = e.target.value;
+                    const isValid = GameUtils.isValidGameName(value);
+                    
+                    e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
+                    
+                    if (!isValid && value.length > 0) {
+                        e.target.title = 'Spielname muss 3-30 Zeichen lang sein';
+                    } else {
+                        e.target.title = '';
+                    }
+                });
+            }
+            
+            console.log('✅ Lobby Input-Validierung aktiviert');
+        });
     </script>
+
 </body>
 </html>

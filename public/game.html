@@ -125,20 +125,23 @@
         </div>
     </div>
 
-    <!-- JavaScript Dependencies -->
+    <!-- JavaScript Dependencies in korrekter Reihenfolge -->
     <script src="/socket.io/socket.io.js"></script>
 
-    <!-- Konfiguration zuerst -->
+    <!-- 1. Konfiguration und Utilities zuerst -->
     <script src="/js/game-config.js"></script>
+    <script src="/js/game-utils.js"></script>
 
-    <!-- State-Manager, weil ihn viele brauchen -->
+    <!-- 2. State-Manager -->
     <script src="/js/game-state.js"></script>
 
-    <!-- Ab hier dürfen Module auf GAME_CONFIG & gameState zugreifen -->
+    <!-- 3. Core-Module -->
     <script src="/js/socket-manager.js"></script>
     <script src="/js/races.js"></script>
     <script src="/js/race-selection.js"></script>
     <script src="/js/map-system.js"></script>
+
+    <!-- 4. Hauptsteuerung zuletzt -->
     <script src="/js/game-main.js"></script>
 
 </body>
