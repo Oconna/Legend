@@ -23,6 +23,12 @@ class RaceSelection {
     // ========================================
 
     init() {
+        // Warten bis DOM geladen ist
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+            return;
+        }
+        
         this.setupEventListeners();
         this.setupGameStateListeners();
         

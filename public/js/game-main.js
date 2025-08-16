@@ -3,6 +3,11 @@ console.log('🎮 Initialisiere Game Main...');
 
 class GameController {
     constructor() {
+        // Warten bis gameState verfügbar ist
+        if (!window.gameState) {
+            console.error('❌ GameState nicht verfügbar');
+            return;
+        }
         this.gameState = window.gameState;
         this.socketManager = null;
         this.mapSystem = null;
