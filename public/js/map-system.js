@@ -16,6 +16,9 @@ class MapSystem {
         this.mapSize = gameSettings?.mapSize || GAME_CONFIG.DEFAULT_MAP_SIZE;
         this.tileSize = GAME_CONFIG.TILE_SIZE;
         this.mapData = [];
+
+        this.serverMapLoaded = false;
+        this.mapSyncId = null;
         
         // Camera System
         this.camera = {
@@ -160,40 +163,123 @@ class MapSystem {
     // MAP LOADING FROM SERVER
     // ========================================
 
-    loadServerMap(serverMapData) {
-        console.log('📥 Lade Server-Karte...');
+    // Verbesserte Server-Karten-Lade-Methode
+    loadServerMap(serverMapData, mapInfo = null) {
+        console.log('📥 Lade Server-Karte...', mapInfo);
         
         if (!serverMapData || !Array.isArray(serverMapData)) {
             console.error('❌ Ungültige Server-Kartendaten:', serverMapData);
             return false;
         }
         
-        // Clear existing map
-        this.clearMap();
-        
-        // Copy server map data
-        for (let y = 0; y < this.mapSize; y++) {
-            for (let x = 0; x < this.mapSize; x++) {
-                if (serverMapData[y] && serverMapData[y][x]) {
-                    this.mapData[y][x] = {
-                        ...serverMapData[y][x],
-                        explored: true // All tiles are visible in multiplayer
-                    };
+        try {
+            // Validiere Kartendaten
+            const mapSize = serverMapData.length;
+            if (mapSize === 0 || !Array.isArray(serverMapData[0])) {
+                console.error('❌ Ungültige Kartenstruktur');
+                return false;
+            }
+            
+            console.log(`📐 Kartengröße: ${mapSize}x${serverMapData[0].length}`);
+            
+            // Lösche vorhandene Karte
+            this.clearMap();
+            
+            // Aktualisiere Kartengröße falls nötig
+            if (mapSize !== this.mapSize) {
+                console.log(`📏 Passe Kartengröße an: ${this.mapSize} → ${mapSize}`);
+                this.mapSize = mapSize;
+                this.initializeMap(); // Reinitialize with new size
+            }
+            
+            // Kopiere Server-Kartendaten
+            for (let y = 0; y < mapSize; y++) {
+                if (!serverMapData[y]) {
+                    console.warn(`⚠️ Fehlende Zeile ${y} in Server-Karte`);
+                    continue;
+                }
+                
+                for (let x = 0; x < serverMapData[y].length; x++) {
+                    if (serverMapData[y][x]) {
+                        this.mapData[y][x] = {
+                            ...serverMapData[y][x],
+                            explored: true, // Alle Felder sichtbar im Multiplayer
+                            serverSync: true // Markierung für Server-synchronisierte Felder
+                        };
+                    }
                 }
             }
+            
+            // Setze Sync-Informationen
+            this.serverMapLoaded = true;
+            this.mapSyncId = mapInfo?.seed || Date.now();
+            
+            // Update Game State
+            if (window.gameState) {
+                gameState.setMapData(this.mapData);
+                gameState.updateState('mapSize', this.mapSize);
+            }
+            
+            // Redraw und Update UI
+            this.markForRedraw();
+            this.updateMapInfo();
+            this.centerCamera(); // Zentriere Kamera auf neue Karte
+            
+            console.log('✅ Server-Karte erfolgreich geladen');
+            console.log(`   Sync-ID: ${this.mapSyncId}`);
+            console.log(`   Größe: ${mapSize}x${mapSize}`);
+            
+            // Benachrichtige andere Systeme
+            this.dispatchEvent('mapLoaded', {
+                source: 'server',
+                mapSize: this.mapSize,
+                syncId: this.mapSyncId
+            });
+            
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Fehler beim Laden der Server-Karte:', error);
+            return false;
         }
-        
-        // Update map size if it differs
-        if (serverMapData.length !== this.mapSize) {
-            console.log(`📐 Karten-Größe angepasst: ${this.mapSize} → ${serverMapData.length}`);
-            this.mapSize = serverMapData.length;
-        }
-        
-        this.markForRedraw();
-        this.updateMapInfo();
-        console.log('✅ Server-Karte geladen');
-        return true;
     }
+
+    // Neue Methode: Prüfe ob Karte vom Server stammt
+    isServerSynced() {
+        return this.serverMapLoaded && this.mapSyncId !== null;
+    }
+
+    // Aktualisierte generateMap Methode - nur für Einzelspieler
+    generateMap() {
+        if (this.serverMapLoaded) {
+            console.warn('⚠️ Server-Karte bereits geladen, überspringe lokale Generierung');
+            return;
+        }
+        
+        console.log('🎨 Generiere lokale Karte (Einzelspieler-Modus)...');
+        
+        // ... bestehender Code für lokale Kartengenerierung ...
+    }
+
+    // Neue Methode: Fordere Karten-Resync an
+    requestMapSync() {
+        if (window.socketManager && window.gameState) {
+            const gameSettings = gameState.data.gameSettings;
+            if (gameSettings && gameSettings.gameId) {
+                console.log('🔄 Fordere Karten-Synchronisation an...');
+                socketManager.requestMap(gameSettings.gameId);
+            }
+        }
+    }
+
+    // Event-Dispatcher für Map-Events
+    dispatchEvent(eventName, data) {
+        const event = new CustomEvent(`map${eventName}`, { 
+            detail: data 
+        });
+        window.dispatchEvent(event);
+    }
+}
 
     // ========================================
     // MAP GENERATION (KEPT FOR SINGLE PLAYER)

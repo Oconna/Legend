@@ -8,6 +8,8 @@ class GameController {
             console.error('❌ GameState nicht verfügbar');
             return;
         }
+        this.mapSyncEnabled = true;
+        this.awaitingMapSync = false;
         this.gameState = window.gameState;
         this.socketManager = null;
         this.mapSystem = null;
@@ -246,6 +248,118 @@ class GameController {
 
         console.log('📡 Socket Event Handler eingerichtet');
     }
+
+    // Aktualisierte onRaceSelected Methode
+    onRaceSelected(data) {
+        console.log('🏛️ Rasse gewählt:', data);
+        
+        // Update Game State falls es die eigene Auswahl war
+        if (window.socketManager && data.playerId === socketManager.socket.id) {
+            if (window.gameState) {
+                // Finde Rassen-Details
+                const selectedRace = this.findRaceById(data.raceId);
+                if (selectedRace) {
+                    gameState.setSelectedRace(selectedRace);
+                    gameState.updateState('raceConfirmed', true);
+                }
+            }
+        }
+        
+        // Update UI
+        this.updateRaceSelectionStatus(data);
+        
+        // Zeige Benachrichtigung
+        const message = data.playerId === socketManager?.socket?.id 
+            ? `Sie haben ${this.getRaceName(data.raceId)} gewählt!`
+            : `${data.playerName} hat ${this.getRaceName(data.raceId)} gewählt!`;
+        
+        this.showNotification(message);
+    }
+
+    // Hilfsmethoden
+    findRaceById(raceId) {
+        if (window.FALLBACK_RACES) {
+            return FALLBACK_RACES.find(race => race.id === raceId);
+        }
+        return null;
+    }
+
+    getRaceName(raceId) {
+        const race = this.findRaceById(raceId);
+        return race ? race.name : raceId;
+    }
+
+    updateTurnDisplay(currentPlayer, turnOrder) {
+        // Update Turn-Anzeige in der UI
+        const turnInfo = document.getElementById('turn-info');
+        if (turnInfo) {
+            turnInfo.innerHTML = `
+                <div class="current-turn">
+                    <strong>${currentPlayer.name}</strong> ist am Zug
+                </div>
+                <div class="turn-order">
+                    Reihenfolge: ${turnOrder.map(id => {
+                        const player = this.findPlayerById(id);
+                        return player ? player.name : id;
+                    }).join(' → ')}
+                </div>
+            `;
+        }
+    }
+
+    showGameInterface() {
+        // Zeige Haupt-Spielinterface
+        document.getElementById('game-interface')?.classList.remove('hidden');
+        document.getElementById('map-container')?.classList.remove('hidden');
+        document.getElementById('game-ui')?.classList.remove('hidden');
+    }
+
+    hideRaceSelection() {
+        // Verstecke Rassenauswahl
+        if (this.raceSelection) {
+            this.raceSelection.hide();
+        }
+    }
+
+    // Debug-Methoden
+    debugMapSync() {
+        console.log('🔍 Map Sync Debug Info:');
+        console.log('  Server Map Loaded:', window.mapSystem?.serverMapLoaded);
+        console.log('  Map Sync ID:', window.mapSystem?.mapSyncId);
+        console.log('  Map Size:', window.mapSystem?.mapSize);
+        console.log('  Awaiting Sync:', this.awaitingMapSync);
+        console.log('  Socket Connected:', window.socketManager?.isConnected);
+    }
+}
+
+// ========================================
+// 4. Event-Listener für Map-Synchronisation
+// ========================================
+
+// Globale Event-Listener für Map-Events
+window.addEventListener('mapLoaded', (event) => {
+    console.log('🗺️ Map Loaded Event:', event.detail);
+    
+    // Benachrichtige UI-Komponenten
+    if (window.gameController) {
+        gameController.onMapLoaded(event.detail);
+    }
+});
+
+// Debug-Funktionen für Browser-Konsole
+window.debugMapSync = () => {
+    if (window.gameController) {
+        gameController.debugMapSync();
+    }
+};
+
+window.requestMapSync = () => {
+    if (window.mapSystem) {
+        mapSystem.requestMapSync();
+    }
+};
+
+console.log('🔄 Client Map Synchronisation System geladen');
 
     handleRaceSelected(data) {
         // Update other players' race selections
@@ -946,31 +1060,48 @@ class GameController {
     // ========================================
 
     onGameStarted(data) {
-        console.log('🎮 Spiel vom Server gestartet:', data);
+        console.log('🎮 Spiel gestartet:', data);
         
-        // Load server-generated map if available
-        if (data.map && this.mapSystem) {
-            console.log('🗺️ Lade Server-Karte...');
-            this.mapSystem.loadServerMap(data.map);
-        } else {
-            console.warn('⚠️ Keine Server-Karte verfügbar, verwende lokale Karte');
+        // Update Game State
+        if (window.gameState) {
+            gameState.setGamePhase('race_selection'); // Beginne mit Rassenauswahl
+            
+            if (data.game) {
+                gameState.updateState('gameSettings', {
+                    gameId: data.game.id,
+                    mapSize: data.game.settings?.mapSize || 30,
+                    playerCount: data.game.players?.length || 2
+                });
+            }
         }
         
-        // Don't call startRaceSelection here - wait for race-selection-phase event
-        // The server will emit race-selection-phase after game-started
-        console.log('⏳ Warte auf race-selection-phase Event vom Server...');
+        // WICHTIG: Keine Karte in dieser Phase generieren
+        // Warten auf race-selection-phase Event
+        console.log('⏳ Warte auf Rassenauswahl-Phase...');
         
-        // Ensure race selection is properly initialized
-        if (!this.raceSelection || !this.raceSelection.isInitialized) {
-            console.warn('⚠️ Race Selection nicht bereit in onGameStarted, warte...');
-            setTimeout(() => {
-                if (this.raceSelection && this.raceSelection.isInitialized) {
-                    console.log('✅ Race Selection bereit in onGameStarted');
-                } else {
-                    console.error('❌ Race Selection immer noch nicht bereit in onGameStarted');
-                }
-            }, 1000);
+        this.showNotification('Spiel gestartet! Rassenauswahl beginnt...');
+    }
+
+    onMapReady(data) {
+        console.log('🗺️ Karte bereit:', data);
+        
+        this.awaitingMapSync = false;
+        
+        // Update UI für Spielphase
+        this.hideRaceSelection();
+        this.showGameInterface();
+        
+        // Update Turn Information
+        if (data.turnOrder && data.currentPlayer) {
+            this.updateTurnDisplay(data.currentPlayer, data.turnOrder);
         }
+        
+        // Update andere UI-Elemente
+        this.updatePlayerDisplay();
+        this.updateUnitsOverview();
+        this.updateMapInfo();
+        
+        console.log('✅ Spiel-Interface bereit');
     }
 
     onGameJoined(data) {
@@ -1660,7 +1791,7 @@ class GameController {
         const race = this.gameState.selectedRace;
         const units = race.units || [];
         
-        let shopHtml = '<h3>�� Einheiten kaufen</h3><div style="max-height: 300px; overflow-y: auto;">';
+        let shopHtml = '<h3>   Einheiten kaufen</h3><div style="max-height: 300px; overflow-y: auto;">';
         
         units.forEach(unit => {
             const canAfford = this.gameState.playerGold >= unit.cost;

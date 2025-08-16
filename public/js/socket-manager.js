@@ -14,6 +14,8 @@ class SocketManager {
         this.maxReconnectAttempts = (window.GAME_CONFIG && window.GAME_CONFIG.RECONNECT_ATTEMPTS) || 5;
         this.reconnectDelay = (window.GAME_CONFIG && window.GAME_CONFIG.RECONNECT_DELAY) || 2000;
         this.pingInterval = null;
+        this.mapSyncEnabled = true;
+        this.pendingMapRequest = false;
         
         this.initSocket();
     }
@@ -77,6 +79,12 @@ class SocketManager {
         // Game state events
         this.socket.on('game-state', (data) => this.onGameState(data));
         this.socket.on('game-state-failed', (data) => this.onGameStateFailed(data));
+
+        // Neue Event-Listener für Kartensynchronisation
+        this.socket.on('game-map-ready', (data) => this.onGameMapReady(data));
+        this.socket.on('map-data', (data) => this.onMapData(data));
+        this.socket.on('map-request-failed', (data) => this.onMapRequestFailed(data));
+        this.socket.on('race-selection-phase', (data) => this.onRaceSelectionPhase(data));
         
         // Turn system events
         this.socket.on('turn-ended', (data) => this.onTurnEnded(data));
@@ -185,6 +193,93 @@ class SocketManager {
     // ========================================
     // GAME EVENT HANDLERS
     // ========================================
+
+
+    // Neue Event-Handler für Kartensynchronisation
+    onGameMapReady(data) {
+        console.log('🗺️ Server-Karte empfangen:', data);
+        
+        if (data.success && data.map) {
+            // Lade Server-Karte in Map-System
+            if (window.mapSystem) {
+                const success = window.mapSystem.loadServerMap(data.map);
+                if (success) {
+                    console.log('✅ Server-Karte erfolgreich geladen');
+                    
+                    // Update Game State
+                    if (window.gameState) {
+                        gameState.setMapData(data.map);
+                        gameState.setGamePhase('playing');
+                    }
+                    
+                    // Benachrichtige Game Controller
+                    if (window.gameController) {
+                        gameController.onMapReady(data);
+                    }
+                    
+                    this.showNotification('Karte synchronisiert! Das Spiel beginnt.');
+                } else {
+                    console.error('❌ Fehler beim Laden der Server-Karte');
+                    this.showNotification('Fehler beim Laden der Karte!', 'error');
+                }
+            }
+        } else {
+            console.error('❌ Ungültige Kartendaten:', data);
+            this.showNotification('Fehler: Ungültige Kartendaten', 'error');
+        }
+    }
+
+    onMapData(data) {
+        console.log('📥 Kartendaten empfangen:', data);
+        this.pendingMapRequest = false;
+        
+        if (data.success && data.map) {
+            if (window.mapSystem) {
+                window.mapSystem.loadServerMap(data.map);
+                this.showNotification('Karte synchronisiert!');
+            }
+        }
+    }
+
+    onMapRequestFailed(data) {
+        console.warn('⚠️ Karten-Anfrage fehlgeschlagen:', data.error);
+        this.pendingMapRequest = false;
+        this.showNotification('Kartensynchronisation fehlgeschlagen', 'warning');
+    }
+
+    onRaceSelectionPhase(data) {
+        console.log('🏛️ Rassenauswahl-Phase gestartet:', data);
+        
+        // Aktualisiere Game State
+        if (window.gameState) {
+            gameState.setGamePhase('race_selection');
+        }
+        
+        // Starte Rassenauswahl UI
+        if (window.gameController && window.gameController.raceSelection) {
+            setTimeout(() => {
+                gameController.raceSelection.show();
+            }, 500);
+        }
+    }
+
+    // Neue Methoden
+    requestMap(gameId) {
+        if (this.pendingMapRequest) {
+            console.log('⏳ Karten-Anfrage bereits ausstehend...');
+            return;
+        }
+        
+        console.log('📡 Fordere Karte vom Server an...');
+        this.pendingMapRequest = true;
+        this.socket.emit('request-map', { gameId });
+    }
+
+    selectRace(gameId, raceId) {
+        console.log(`🏛️ Sende Rassenauswahl: ${raceId} für Spiel ${gameId}`);
+        this.socket.emit('select-race', { gameId, raceId });
+    }
+}
 
     onGameStarted(data) {
         console.log('🎮 Spiel gestartet:', data);
