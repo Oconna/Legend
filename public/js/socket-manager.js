@@ -62,13 +62,17 @@ class SocketManager {
         this.socket.on('reconnect_error', (error) => this.onReconnectError(error));
         this.socket.on('reconnect_failed', () => this.onReconnectFailed());
 
-        // Game Events
+        // Game flow events
         this.socket.on('game-started', (data) => this.onGameStarted(data));
-        this.socket.on('race-selected', (data) => this.onRaceSelected(data));
-        this.socket.on('race-selection-failed', (data) => this.onRaceSelectionFailed(data));
+        this.socket.on('race-selection-phase', () => this.onRaceSelectionPhase());
         this.socket.on('all-races-selected', (data) => this.onAllRacesSelected(data));
-
-        // Turn System Events
+        this.socket.on('game-phase-changed', (data) => this.onGamePhaseChanged(data));
+        
+        // Game state events
+        this.socket.on('game-state', (data) => this.onGameState(data));
+        this.socket.on('game-state-failed', (data) => this.onGameStateFailed(data));
+        
+        // Turn system events
         this.socket.on('turn-ended', (data) => this.onTurnEnded(data));
         this.socket.on('turn-forced', (data) => this.onTurnForced(data));
         this.socket.on('turn-info', (data) => this.onTurnInfo(data));
@@ -173,10 +177,53 @@ class SocketManager {
             gameState.setGamePhase('race_selection');
         }
         
-        // Trigger race selection modal
+        // Trigger race selection modal with map data
         window.dispatchEvent(new CustomEvent('showRaceSelection'));
         
+        // If map data is available, trigger map loading
+        if (data.map) {
+            console.log('🗺️ Karte vom Server erhalten, lade in Map System...');
+            window.dispatchEvent(new CustomEvent('gameStarted', { detail: data }));
+        }
+        
         this.showNotification('Spiel gestartet! Wähle deine Rasse.', 'info');
+    }
+
+    onRaceSelectionPhase() {
+        console.log('🏛️ Rassen-Auswahl Phase beginnt');
+        if (window.gameState) {
+            gameState.setGamePhase('race_selection');
+        }
+        window.dispatchEvent(new CustomEvent('showRaceSelection'));
+    }
+
+    onGamePhaseChanged(data) {
+        console.log('🔄 Spielphase geändert:', data);
+        if (window.gameState) {
+            gameState.setGamePhase(data.phase);
+        }
+    }
+
+    onGameState(data) {
+        console.log('📊 Spielstand vom Server erhalten:', data);
+        
+        // Update game state
+        if (window.gameState) {
+            gameState.updateFromServer(data);
+        }
+        
+        // Load map if available
+        if (data.map && window.mapSystem) {
+            console.log('🗺️ Lade Karte vom Spielstand...');
+            window.mapSystem.loadServerMap(data.map);
+        }
+        
+        this.showNotification('Spielstand geladen', 'info');
+    }
+
+    onGameStateFailed(data) {
+        console.error('❌ Spielstand konnte nicht geladen werden:', data.error);
+        this.showNotification(`Spielstand konnte nicht geladen werden: ${data.error}`, 'error');
     }
 
     onRaceSelected(data) {
@@ -214,6 +261,12 @@ class SocketManager {
         // Hide race selection and show game
         window.dispatchEvent(new CustomEvent('hideRaceSelection'));
         window.dispatchEvent(new CustomEvent('gameStarted', { detail: data }));
+        
+        // If map data is available, trigger map loading
+        if (data.map) {
+            console.log('🗺️ Karte vom Server erhalten (alle Rassen gewählt), lade in Map System...');
+            window.dispatchEvent(new CustomEvent('gameStarted', { detail: data }));
+        }
         
         const isFirstPlayer = data.currentPlayer === (window.gameState ? gameState.currentPlayer.name : null);
         this.showGameStartMessage(data, isFirstPlayer);

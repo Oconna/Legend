@@ -199,6 +199,79 @@ class GameState {
     return true;
   }
 
+  updateFromServer(serverData) {
+    console.log('📊 Aktualisiere GameState vom Server:', serverData);
+    
+    if (!serverData) return false;
+    
+    const updates = {};
+    
+    // Update game phase
+    if (serverData.gamePhase) {
+      updates.gamePhase = serverData.gamePhase;
+    }
+    
+    // Update turn data
+    if (serverData.turnNumber) {
+      updates.turnNumber = serverData.turnNumber;
+    }
+    if (serverData.currentTurnPlayer) {
+      updates.currentTurnPlayer = serverData.currentTurnPlayer;
+    }
+    if (serverData.isMyTurn !== undefined) {
+      updates.isMyTurn = serverData.isMyTurn;
+    }
+    
+    // Update map data
+    if (serverData.map) {
+      updates.mapData = serverData.map;
+    }
+    if (serverData.mapSize) {
+      updates.mapSize = serverData.mapSize;
+    }
+    
+    // Update player data
+    if (serverData.player) {
+      if (serverData.player.raceId) {
+        // Find race in loaded races
+        const race = window.LOADED_RACES?.find(r => r.id === serverData.player.raceId);
+        if (race) {
+          updates.selectedRace = race;
+          updates.raceConfirmed = true;
+        }
+      }
+      if (serverData.player.gold !== undefined) {
+        updates.playerGold = serverData.player.gold;
+      }
+      if (serverData.player.units) {
+        updates.playerUnits = serverData.player.units;
+      }
+      if (serverData.player.buildings) {
+        updates.playerBuildings = serverData.player.buildings;
+      }
+    }
+    
+    // Update other players
+    if (serverData.otherPlayers) {
+      const otherPlayersRaces = new Map();
+      serverData.otherPlayers.forEach(p => {
+        if (p.raceId) {
+          otherPlayersRaces.set(p.name, p.raceId);
+        }
+      });
+      updates.otherPlayersRaces = otherPlayersRaces;
+    }
+    
+    // Apply all updates at once
+    if (Object.keys(updates).length > 0) {
+      this.updateMultiple(updates);
+      console.log('✅ GameState vom Server aktualisiert');
+      return true;
+    }
+    
+    return false;
+  }
+
   selectTile(x, y) {
     this.updateState('selectedTile', (x != null && y != null) ? { x, y } : null);
     this.emit('selectedTileChanged', { tile: this.data.selectedTile });

@@ -66,7 +66,8 @@ class MapSystem {
         this.initializeMap();
         this.setupEventListeners();
         this.setupGameStateListeners();
-        this.generateMap();
+        // Don't generate map here - wait for server map
+        // this.generateMap();
         this.centerCamera();
         this.startRenderLoop();
         
@@ -156,7 +157,46 @@ class MapSystem {
     }
 
     // ========================================
-    // MAP GENERATION
+    // MAP LOADING FROM SERVER
+    // ========================================
+
+    loadServerMap(serverMapData) {
+        console.log('📥 Lade Server-Karte...');
+        
+        if (!serverMapData || !Array.isArray(serverMapData)) {
+            console.error('❌ Ungültige Server-Kartendaten:', serverMapData);
+            return false;
+        }
+        
+        // Clear existing map
+        this.clearMap();
+        
+        // Copy server map data
+        for (let y = 0; y < this.mapSize; y++) {
+            for (let x = 0; x < this.mapSize; x++) {
+                if (serverMapData[y] && serverMapData[y][x]) {
+                    this.mapData[y][x] = {
+                        ...serverMapData[y][x],
+                        explored: true // All tiles are visible in multiplayer
+                    };
+                }
+            }
+        }
+        
+        // Update map size if it differs
+        if (serverMapData.length !== this.mapSize) {
+            console.log(`📐 Karten-Größe angepasst: ${this.mapSize} → ${serverMapData.length}`);
+            this.mapSize = serverMapData.length;
+        }
+        
+        this.markForRedraw();
+        this.updateMapInfo();
+        console.log('✅ Server-Karte geladen');
+        return true;
+    }
+
+    // ========================================
+    // MAP GENERATION (KEPT FOR SINGLE PLAYER)
     // ========================================
 
     generateMap() {
@@ -562,6 +602,13 @@ class MapSystem {
 
     onGameStarted(data) {
         console.log('🎮 Game started, updating map');
+        
+        // Load server map if available
+        if (data.map) {
+            console.log('🗺️ Lade Server-Karte in MapSystem...');
+            this.loadServerMap(data.map);
+        }
+        
         this.markForRedraw();
     }
 

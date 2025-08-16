@@ -190,6 +190,10 @@ class GameController {
         socket.on('all-races-selected', (data) => this.onAllRacesSelected(data));
         socket.on('game-phase-changed', (data) => this.onServerPhaseChanged(data));
         
+        // Game state events
+        socket.on('game-state', (data) => this.onGameState(data));
+        socket.on('game-state-failed', (data) => this.onGameStateFailed(data));
+        
         // Turn system events
         socket.on('turn-started', (data) => this.onTurnStarted(data));
         socket.on('turn-ended', (data) => this.onTurnEnded(data));
@@ -225,6 +229,7 @@ class GameController {
         // Request current game state from server
         if (this.socketManager) {
             setTimeout(() => {
+                console.log('📡 Fordere Spielstand vom Server an...');
                 this.socketManager.requestGameState();
             }, 1000);
         }
@@ -750,11 +755,12 @@ class GameController {
     }
 
     onAllRacesSelected(data) {
-        console.log('🏛️ Alle Rassen ausgewählt:', data);
+        console.log('🎯 Alle Rassen gewählt, Spiel beginnt:', data);
         
-        // Hide race selection
-        if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
-            this.raceSelection.hide();
+        // Load server-generated map if available and not already loaded
+        if (data.map && this.mapSystem) {
+            console.log('🗺️ Lade Server-Karte (alle Rassen gewählt)...');
+            this.mapSystem.loadServerMap(data.map);
         }
         
         // Start playing phase
@@ -767,6 +773,15 @@ class GameController {
 
     onGameStarted(data) {
         console.log('🎮 Spiel vom Server gestartet:', data);
+        
+        // Load server-generated map if available
+        if (data.map && this.mapSystem) {
+            console.log('🗺️ Lade Server-Karte...');
+            this.mapSystem.loadServerMap(data.map);
+        } else {
+            console.warn('⚠️ Keine Server-Karte verfügbar, verwende lokale Karte');
+        }
+        
         this.startRaceSelection();
     }
 
@@ -882,6 +897,26 @@ class GameController {
         } else {
             this.showNotification(`🏁 ${data.winner} hat gewonnen!`, 'info');
         }
+    }
+
+    onGameState(data) {
+        console.log('📊 Spielstand vom Server erhalten:', data);
+        
+        // Update game state
+        if (this.gameState) {
+            this.gameState.updateFromServer(data);
+        }
+        
+        // Load map if available
+        if (data.map && this.mapSystem) {
+            console.log('🗺️ Lade Karte vom Spielstand...');
+            this.mapSystem.loadServerMap(data.map);
+        }
+    }
+
+    onGameStateFailed(data) {
+        console.error('❌ Fehler beim Laden des Spielstands vom Server:', data.error);
+        this.showError('Fehler beim Laden des Spielstands');
     }
 
     // ========================================

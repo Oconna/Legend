@@ -257,7 +257,11 @@ class EnhancedGameManager {
         const size = game.settings.mapSize;
         const map = [];
         
-        console.log(`🗺️ Generiere Karte ${size}x${size} für Spiel ${game.name}`);
+        // Generate a seed for this game to ensure all players get the same map
+        const gameSeed = game.id || Date.now();
+        const random = this.seededRandom(gameSeed);
+        
+        console.log(`🗺️ Generiere Karte ${size}x${size} für Spiel ${game.name} mit Seed: ${gameSeed}`);
         
         // Initialize map with grass
         for (let y = 0; y < size; y++) {
@@ -272,65 +276,75 @@ class EnhancedGameManager {
             }
         }
         
-        // Generate terrain features
-        this.generateWater(map, size);
-        this.generateMountains(map, size);
-        this.generateForests(map, size);
-        this.generateBuildings(map, size, game.players.length);
+        // Generate terrain features using seeded random
+        this.generateWater(map, size, random);
+        this.generateMountains(map, size, random);
+        this.generateForests(map, size, random);
+        this.generateBuildings(map, size, game.players.length, random);
         
         game.map = map;
+        game.mapSeed = gameSeed; // Store seed for debugging
         console.log(`✅ Karte generiert für ${game.name}`);
     }
 
-    generateWater(map, size) {
+    // Seeded random number generator for consistent map generation
+    seededRandom(seed) {
+        let value = seed;
+        return function() {
+            value = (value * 9301 + 49297) % 233280;
+            return value / 233280;
+        };
+    }
+
+    generateWater(map, size, random) {
         const waterBodies = Math.max(1, Math.floor(size / 15));
         
         for (let i = 0; i < waterBodies; i++) {
-            const centerX = Math.floor(Math.random() * size);
-            const centerY = Math.floor(Math.random() * size);
-            const radius = 2 + Math.floor(Math.random() * 4);
+            const centerX = Math.floor(random() * size);
+            const centerY = Math.floor(random() * size);
+            const radius = 2 + Math.floor(random() * 4);
             
             this.generateCircularFeature(map, centerX, centerY, radius, 'water', 0.7, size);
         }
     }
 
-    generateMountains(map, size) {
+    generateMountains(map, size, random) {
         const mountainChains = Math.max(1, Math.floor(size / 20));
         
         for (let i = 0; i < mountainChains; i++) {
-            const startX = Math.floor(Math.random() * size);
-            const startY = Math.floor(Math.random() * size);
-            const length = 5 + Math.floor(Math.random() * 10);
+            const startX = Math.floor(random() * size);
+            const startY = Math.floor(random() * size);
+            const length = 5 + Math.floor(random() * 10);
             
             this.generateLinearFeature(map, startX, startY, length, 'mountain', 0.6, size);
         }
     }
 
-    generateForests(map, size) {
+    generateForests(map, size, random) {
         const forestPatches = Math.max(2, Math.floor(size / 8));
         
         for (let i = 0; i < forestPatches; i++) {
-            const centerX = Math.floor(Math.random() * size);
-            const centerY = Math.floor(Math.random() * size);
-            const radius = 3 + Math.floor(Math.random() * 5);
+            const centerX = Math.floor(random() * size);
+            const centerY = Math.floor(random() * size);
+            const radius = 3 + Math.floor(random() * 5);
             
             this.generateCircularFeature(map, centerX, centerY, radius, 'forest', 0.5, size);
         }
     }
 
-    generateBuildings(map, size, playerCount) {
+    generateBuildings(map, size, playerCount, random) {
         // Generate cities (2-3 per player)
         const cityCount = Math.max(playerCount * 2, Math.floor(size / 12));
         
         for (let i = 0; i < cityCount; i++) {
-            this.placeBuildingRandomly(map, size, 'city');
+            this.placeBuildingRandomly(map, size, 'city', random);
         }
         
         // Generate castles (1 per 2 players)
-        const castleCount = Math.max(1, Math.floor(playerCount / 2));
+        const castleCount = Math.max(Math.floor(playerCount / 2), Math.floor(size / 20));
         
         for (let i = 0; i < castleCount; i++) {
-            this.placeBuildingRandomly(map, size, 'castle');
+            this.placeBuildingRandomly(map, size, 'castle', random);
         }
     }
 
@@ -376,13 +390,13 @@ class EnhancedGameManager {
         }
     }
 
-    placeBuildingRandomly(map, size, buildingType) {
+    placeBuildingRandomly(map, size, buildingType, random) {
         let attempts = 0;
         const maxAttempts = 100;
         
         while (attempts < maxAttempts) {
-            const x = Math.floor(Math.random() * size);
-            const y = Math.floor(Math.random() * size);
+            const x = Math.floor(random() * size);
+            const y = Math.floor(random() * size);
             
             if (this.canPlaceBuilding(map, x, y, size)) {
                 map[y][x].terrain = buildingType;
@@ -1402,6 +1416,7 @@ io.on('connection', (socket) => {
             if (game) {
                 io.to(data.gameId).emit('game-started', {
                     game: game,
+                    map: game.map, // Send the generated map to all clients
                     message: 'Spiel gestartet! Rassen-Auswahl beginnt.'
                 });
 
@@ -1437,6 +1452,7 @@ io.on('connection', (socket) => {
                 
                 io.to(data.gameId).emit('all-races-selected', {
                     game: startedGame,
+                    map: startedGame.map, // Send the generated map to all clients
                     message: 'Alle Rassen gewählt! Spiel beginnt...'
                 });
                 
