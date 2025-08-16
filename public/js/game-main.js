@@ -188,6 +188,7 @@ class GameController {
         // Socket events
         if (this.socketManager) {
             this.setupSocketEvents();
+            this.setupSocketEventHandlers();
         }
         
         // Game state events
@@ -242,6 +243,175 @@ class GameController {
         socket.on('game-ended', (data) => this.onGameEnded(data));
         
         console.log('📡 Socket Events eingerichtet');
+    }
+
+    // ========================================
+    // SOCKET EVENT HANDLERS
+    // ========================================
+
+    setupSocketEventHandlers() {
+        if (!this.socketManager) {
+            console.error('❌ Socket Manager nicht verfügbar');
+            return;
+        }
+
+        // Race selection events
+        this.socketManager.socket.on('race-selected', (data) => {
+            console.log('🏛️ Rasse gewählt von Server:', data);
+            this.handleRaceSelected(data);
+        });
+
+        this.socketManager.socket.on('all-races-selected', (data) => {
+            console.log('🎯 Alle Rassen gewählt - Server bestätigt:', data);
+            this.handleAllRacesSelected(data);
+        });
+
+        this.socketManager.socket.on('race-selection-failed', (data) => {
+            console.error('❌ Rassen-Auswahl fehlgeschlagen:', data.error);
+            this.showError(`Rassen-Auswahl fehlgeschlagen: ${data.error}`);
+        });
+
+        // Game start events
+        this.socketManager.socket.on('game-started', (data) => {
+            console.log('🎮 Spiel gestartet vom Server:', data);
+            this.handleGameStarted(data);
+        });
+
+        // Turn events
+        this.socketManager.socket.on('turn-started', (data) => {
+            console.log('🎯 Zug gestartet:', data);
+            this.handleTurnStarted(data);
+        });
+
+        // Map events
+        this.socketManager.socket.on('map-updated', (data) => {
+            console.log('🗺️ Karte aktualisiert:', data);
+            this.handleMapUpdated(data);
+        });
+
+        // Connection events
+        this.socketManager.socket.on('disconnect', () => {
+            console.warn('⚠️ Verbindung zum Server getrennt');
+            this.handleDisconnect();
+        });
+
+        this.socketManager.socket.on('reconnect', () => {
+            console.log('✅ Verbindung zum Server wiederhergestellt');
+            this.handleReconnect();
+        });
+
+        console.log('📡 Socket Event Handler eingerichtet');
+    }
+
+    handleRaceSelected(data) {
+        // Update other players' race selections
+        if (data.playerName && data.raceId) {
+            this.gameState.data.otherPlayersRaces.set(data.playerName, data.raceId);
+            this.updateRaceStatusPanel();
+            
+            // Check if all races are selected
+            this.checkIfAllRacesSelected();
+        }
+    }
+
+    handleAllRacesSelected(data) {
+        console.log('🎯 Alle Rassen gewählt - starte Spiel...');
+        
+        // Hide race selection modal
+        if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            this.raceSelection.hide();
+        }
+
+        // Update game state with server data
+        if (data.game) {
+            this.gameSettings = data.game;
+        }
+
+        // Start playing phase
+        this.startPlayingPhase();
+    }
+
+    handleGameStarted(data) {
+        console.log('🎮 Spiel vom Server gestartet:', data);
+        
+        // Update game state
+        if (data.game) {
+            this.gameSettings = data.game;
+        }
+
+        // Update map if provided
+        if (data.map && this.mapSystem) {
+            this.mapSystem.mapData = data.map;
+            this.mapSystem.renderMap();
+        }
+
+        // Switch to playing phase
+        this.setGamePhase('playing');
+        
+        // Start first turn
+        this.startFirstTurn();
+    }
+
+    handleTurnStarted(data) {
+        console.log('🎯 Zug gestartet:', data);
+        
+        // Update turn information
+        if (data.currentPlayer) {
+            this.gameState.setTurnData({
+                currentPlayer: data.currentPlayer,
+                turnNumber: data.turnNumber || 1,
+                isMyTurn: data.currentPlayer === this.gameState.currentPlayer?.name
+            });
+        }
+
+        // Update UI
+        this.updatePlayerDisplay();
+        this.updateTurnInfo();
+    }
+
+    handleMapUpdated(data) {
+        console.log('🗺️ Karte aktualisiert:', data);
+        
+        // Update map data
+        if (data.map && this.mapSystem) {
+            this.mapSystem.mapData = data.map;
+            this.mapSystem.renderMap();
+        }
+
+        // Update units if provided
+        if (data.units) {
+            this.gameState.data.playerUnits = data.units.filter(u => u.owner === this.gameState.currentPlayer?.name);
+            this.updateUnitsOverview();
+        }
+    }
+
+    handleDisconnect() {
+        console.warn('⚠️ Verbindung getrennt - versuche Reconnection...');
+        
+        // Show disconnect message
+        this.showError('Verbindung zum Server getrennt. Versuche Reconnection...');
+        
+        // Try to reconnect after delay
+        setTimeout(() => {
+            if (this.socketManager && !this.socketManager.isConnected) {
+                this.socketManager.connect();
+            }
+        }, 3000);
+    }
+
+    handleReconnect() {
+        console.log('✅ Verbindung wiederhergestellt');
+        
+        // Hide error message
+        this.hideError();
+        
+        // Rejoin game if needed
+        if (this.gameSettings?.gameId) {
+            this.socketManager.emit('rejoin-game', {
+                gameId: this.gameSettings.gameId,
+                player: this.gameState.currentPlayer
+            });
+        }
     }
 
     // ========================================

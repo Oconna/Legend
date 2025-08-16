@@ -7,23 +7,29 @@ console.log('🏛️ Initialisiere Race Selection System...');
 // ========================================
 
 class RaceSelection {
-    constructor() {
-        this.modal = document.getElementById('raceSelectionModal');
+    constructor(modalId = 'raceSelectionModal') {
+        this.modal = document.getElementById(modalId);
         this.racesGrid = document.getElementById('racesGrid');
         this.confirmBtn = document.getElementById('confirmRaceBtn');
         this.statusDisplay = document.getElementById('raceSelectionStatus');
+        
         this.selectedRaceId = null;
+        this.availableRaces = [];
         this.isProcessing = false;
         this.isInitialized = false;
         
-        this.init();
+        // Initialize
+        this.initialize();
+        
+        // Setup socket event listeners
+        this.setupSocketEventListeners();
     }
 
     // ========================================
     // INITIALIZATION
     // ========================================
 
-    init() {
+    initialize() {
         // Warten bis DOM geladen ist
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.init());
@@ -131,6 +137,74 @@ class RaceSelection {
                 this.hideModal();
             }
         });
+    }
+
+    setupSocketEventListeners() {
+        if (window.socketManager && window.socketManager.socket) {
+            // Listen for race selection events
+            window.socketManager.socket.on('race-selected', (data) => {
+                console.log('🏛️ Rasse gewählt von Server:', data);
+                this.handleRaceSelected(data);
+            });
+
+            window.socketManager.socket.on('all-races-selected', (data) => {
+                console.log('🎯 Alle Rassen gewählt - Server bestätigt:', data);
+                this.handleAllRacesSelected(data);
+            });
+
+            window.socketManager.socket.on('race-selection-failed', (data) => {
+                console.error('❌ Rassen-Auswahl fehlgeschlagen:', data.error);
+                this.handleSelectionFailed(data);
+            });
+
+            console.log('📡 Socket Event Listener für Race Selection eingerichtet');
+        }
+    }
+
+    handleRaceSelected(data) {
+        // Update other players' race selections
+        if (data.playerName && data.raceId) {
+            // Update local game state if available
+            if (window.gameState && window.gameState.data) {
+                if (!window.gameState.data.otherPlayersRaces) {
+                    window.gameState.data.otherPlayersRaces = new Map();
+                }
+                window.gameState.data.otherPlayersRaces.set(data.playerName, data.raceId);
+            }
+            
+            // Update race availability
+            this.updateRaceAvailability();
+            
+            // Update status
+            this.updateStatus(`${data.playerName} hat eine Rasse gewählt`);
+        }
+    }
+
+    handleAllRacesSelected(data) {
+        console.log('🎯 Alle Rassen gewählt - starte Spiel...');
+        
+        // Hide modal
+        this.hideModal();
+        
+        // Update status
+        this.updateStatus('🎮 Alle Rassen gewählt! Spiel startet...');
+        
+        // Dispatch event for game controller
+        window.dispatchEvent(new CustomEvent('allRacesSelected', {
+            detail: { 
+                message: 'Alle Rassen gewählt',
+                game: data.game,
+                map: data.map
+            }
+        }));
+    }
+
+    handleSelectionFailed(data) {
+        console.error('❌ Rassen-Auswahl fehlgeschlagen:', data.error);
+        
+        this.isProcessing = false;
+        this.enableConfirmButton();
+        this.showError(`Fehler: ${data.error}`);
     }
 
     // ========================================
@@ -280,53 +354,75 @@ class RaceSelection {
     }
 
     confirmRaceSelection() {
-        if (!this.selectedRaceId || this.isProcessing) return;
-        
-        this.isProcessing = true;
-        
-        if (this.confirmBtn) {
-            this.confirmBtn.disabled = true;
-            this.confirmBtn.innerHTML = '<span class="loading-spinner"></span> Sende...';
-        }
-        
-        const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
-        const race = availableRaces.find(r => r.id === this.selectedRaceId);
-        
-        if (!race) {
-            this.handleSelectionFailed({ error: 'Rasse nicht gefunden' });
+        if (!this.selectedRaceId || this.isProcessing) {
+            console.warn('⚠️ Keine Rasse ausgewählt oder bereits in Bearbeitung');
             return;
         }
-        
-        // Update local game state
-        if (window.gameState) {
-            gameState.setSelectedRace(race);
-            gameState.updateState('raceConfirmed', true);
+
+        this.isProcessing = true;
+        this.disableConfirmButton();
+
+        const race = this.availableRaces.find(r => r.id === this.selectedRaceId);
+        if (!race) {
+            console.error('❌ Ausgewählte Rasse nicht gefunden:', this.selectedRaceId);
+            this.isProcessing = false;
+            this.enableConfirmButton();
+            return;
         }
-        
-        // Send to server via socket manager
+
+        console.log('🏛️ Bestätige Rassen-Auswahl:', race.name);
+
+        // Send race selection to server
         if (window.socketManager && window.socketManager.socket) {
-            const gameSettings = window.gameState ? gameState.data.gameSettings : null;
-            const currentPlayer = window.gameState ? gameState.currentPlayer : null;
+            const gameSettings = window.gameState?.data?.gameSettings;
+            const gameId = gameSettings?.gameId;
             
-            window.socketManager.socket.emit('select-race', {
-                gameId: gameSettings?.gameId || 'demo-game',
-                playerId: currentPlayer?.id || 'local',
+            if (!gameId) {
+                console.error('❌ Keine Game ID verfügbar');
+                this.showError('Spiel-ID nicht verfügbar');
+                this.isProcessing = false;
+                this.enableConfirmButton();
+                return;
+            }
+
+            // Get current player info
+            const currentPlayer = window.gameState?.currentPlayer;
+            if (!currentPlayer) {
+                console.error('❌ Aktueller Spieler nicht verfügbar');
+                this.showError('Spieler-Information nicht verfügbar');
+                this.isProcessing = false;
+                this.enableConfirmButton();
+                return;
+            }
+
+            console.log('📤 Sende Rassen-Auswahl an Server:', {
+                gameId: gameId,
+                playerId: currentPlayer.id,
                 raceId: this.selectedRaceId
             });
+
+            // Send via socket manager
+            window.socketManager.selectRace(this.selectedRaceId);
+
+            // Update local state
+            if (window.gameState) {
+                window.gameState.setSelectedRace(race);
+            }
+
+            this.updateStatus('⏳ Warte auf andere Spieler...');
+            console.log('✅ Rasse bestätigt:', race.name);
+
+            // Dispatch event für Game Controller
+            window.dispatchEvent(new CustomEvent('raceConfirmed', {
+                detail: { race: race }
+            }));
+
         } else {
-            // Demo mode oder kein Socket verfügbar
-            console.log('🤖 Demo-Modus: Simuliere Rassen-Auswahl');
-            setTimeout(() => this.simulateDemoRaceSelection(), 1000);
+            console.error('❌ Socket Manager nicht verfügbar');
+            this.showError('Verbindung zum Server nicht verfügbar');
+            this.isProcessing = false;
+            this.enableConfirmButton();
         }
-        
-        this.updateStatus('⏳ Warte auf andere Spieler...');
-        
-        console.log('✅ Rasse bestätigt:', race.name);
-        
-        // Dispatch event für Game Controller
-        window.dispatchEvent(new CustomEvent('raceConfirmed', {
-            detail: { race: race }
-        }));
     }
 
     simulateDemoRaceSelection() {
@@ -405,14 +501,6 @@ class RaceSelection {
         console.log('🔄 Race update erhalten:', data);
         this.updateRaceAvailability();
         this.updateRaceStatus();
-    }
-
-    handleSelectionFailed(data) {
-        console.error('❌ Rassen-Auswahl fehlgeschlagen:', data.error);
-        
-        this.isProcessing = false;
-        this.enableConfirmButton();
-        this.showError(`Fehler: ${data.error}`);
     }
 
     handleKeyPress(e) {
@@ -567,27 +655,27 @@ class RaceSelection {
         console.log('📢 Race Selection Status:', message);
     }
 
-    showError(message) {
-        this.updateStatus(`❌ ${message}`);
-        
-        // Reset status after delay
-        setTimeout(() => {
-            if (this.selectedRaceId) {
-                const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
-                const race = availableRaces.find(r => r.id === this.selectedRaceId);
-                if (race) {
-                    this.updateStatus(`✅ ${race.name} ausgewählt - Klicke "Bestätigen" um fortzufahren`);
-                }
-            } else {
-                this.updateStatus('Wähle eine Rasse aus den verfügbaren Optionen');
-            }
-        }, 3000);
+    disableConfirmButton() {
+        if (this.confirmBtn) {
+            this.confirmBtn.disabled = true;
+            this.confirmBtn.innerHTML = '<span class="loading-spinner"></span> Sende...';
+        }
     }
 
     enableConfirmButton() {
         if (this.confirmBtn) {
             this.confirmBtn.disabled = false;
-            this.confirmBtn.textContent = '✅ Rasse bestätigen';
+            this.confirmBtn.innerHTML = 'Bestätigen';
+        }
+    }
+
+    showError(message) {
+        console.error('❌ Fehler:', message);
+        this.updateStatus(`❌ ${message}`);
+        
+        // Show error notification
+        if (window.showNotification) {
+            window.showNotification(message, 'error');
         }
     }
 

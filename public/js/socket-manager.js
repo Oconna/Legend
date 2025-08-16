@@ -444,7 +444,6 @@ class SocketManager {
         
         return this.emit('select-race', {
             gameId: gameState.data.gameSettings.gameId,
-            playerId: gameState.currentPlayer.id,
             raceId: raceId
         });
     }

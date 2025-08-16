@@ -201,13 +201,41 @@ class EnhancedGameManager {
             return { success: false, error: 'Spiel nicht gefunden' };
         }
 
-        const player = game.players.find(p => p.id === playerId || p.socketId === playerId);
+        console.log(`🔍 Suche Spieler in Spiel ${gameId}:`, {
+            playerId: playerId,
+            availablePlayers: game.players.map(p => ({ id: p.id, socketId: p.socketId, name: p.name }))
+        });
+
+        // Try to find player by different identifiers
+        let player = null;
+        
+        // First try by exact ID match
+        player = game.players.find(p => p.id == playerId);
+        
+        // If not found, try by socketId
         if (!player) {
+            player = game.players.find(p => p.socketId === playerId);
+        }
+        
+        // If still not found, try by name (fallback)
+        if (!player) {
+            player = game.players.find(p => p.name === playerId);
+        }
+
+        if (!player) {
+            console.error(`❌ Spieler nicht gefunden:`, {
+                playerId: playerId,
+                gamePlayers: game.players,
+                gameId: gameId
+            });
             return { success: false, error: 'Spieler nicht gefunden' };
         }
 
-        // Check if race is already taken
-        if (game.selectedRaces.has(raceId)) {
+        console.log(`✅ Spieler gefunden: ${player.name} (ID: ${player.id}, Socket: ${player.socketId})`);
+
+        // Check if race is already taken by another player
+        const raceTakenBy = game.selectedRaces.get(raceId);
+        if (raceTakenBy && raceTakenBy !== player.id) {
             return { success: false, error: 'Rasse bereits gewählt' };
         }
 
@@ -219,6 +247,8 @@ class EnhancedGameManager {
 
         // Check if all players selected races
         const allSelected = game.players.every(p => p.raceId !== null);
+        
+        console.log(`📊 Rassen-Auswahl Status: ${game.players.filter(p => p.raceId).length}/${game.players.length} Spieler haben gewählt`);
         
         return { 
             success: true, 
@@ -556,159 +586,126 @@ class EnhancedGameManager {
     // ========================================
 
     setupTurnOrder(game) {
-        // Randomize turn order
-        const players = game.players.filter(p => !p.defeated);
-        const turnOrder = [...players].sort(() => Math.random() - 0.5);
+        // Create a copy of players array and shuffle it
+        const players = [...game.players];
+        for (let i = players.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [players[i], players[j]] = [players[j], players[i]];
+        }
         
-        game.turnOrder = turnOrder.map(p => p.id);
+        game.turnOrder = players;
         game.currentTurnIndex = 0;
         
-        console.log(`🎯 Zugreihenfolge für ${game.name}:`, turnOrder.map(p => p.name));
+        console.log(`🎯 Zugreihenfolge für ${game.name}:`, players.map(p => p.name));
     }
 
-    getCurrentPlayer(game) {
-        if (!game.turnOrder.length) return null;
-        const currentPlayerId = game.turnOrder[game.currentTurnIndex];
-        return game.players.find(p => p.id === currentPlayerId);
+    generateStartingPositions(game) {
+        console.log(`🏗️ Generiere Startpositionen für ${game.name}`);
+        
+        const mapSize = game.settings.mapSize;
+        const players = game.players;
+        
+        // Find starting positions (cities or castles)
+        const startingPositions = [];
+        
+        for (let y = 0; y < mapSize; y++) {
+            for (let x = 0; x < mapSize; x++) {
+                const tile = game.map[y][x];
+                if (tile.terrain === 'city' || tile.terrain === 'castle') {
+                    startingPositions.push({ x, y, terrain: tile.terrain });
+                }
+            }
+        }
+        
+        // Assign starting positions to players
+        players.forEach((player, index) => {
+            if (startingPositions[index]) {
+                const pos = startingPositions[index];
+                player.startingPosition = pos;
+                
+                // Mark tile as owned
+                game.map[pos.y][pos.x].owner = player.id;
+                
+                console.log(`📍 ${player.name} startet bei (${pos.x}, ${pos.y}) - ${pos.terrain}`);
+            } else {
+                // Fallback: random position
+                const x = Math.floor(Math.random() * mapSize);
+                const y = Math.floor(Math.random() * mapSize);
+                player.startingPosition = { x, y, terrain: 'grass' };
+                game.map[y][x].owner = player.id;
+                
+                console.log(`📍 ${player.name} startet bei (${x}, ${y}) - Fallback`);
+            }
+        });
     }
 
     startTurnTimer(game) {
-        this.clearTurnTimer(game.id);
+        const timeLimit = game.settings.turnTimeLimit || this.config.TURN_TIME_LIMIT;
         
-        const timeLimit = game.settings.turnTimeLimit;
-        let timeRemaining = timeLimit;
+        console.log(`⏰ Starte Zug-Timer für ${game.name}: ${timeLimit} Sekunden`);
         
         const timer = setInterval(() => {
-            timeRemaining--;
+            const gameInstance = this.games.get(game.id);
+            if (!gameInstance) {
+                clearInterval(timer);
+                return;
+            }
             
-            // Send timer update to all players
-            io.to(game.id).emit('turn-timer-update', {
-                timeRemaining: timeRemaining,
-                totalTime: timeLimit
-            });
+            const elapsed = Math.floor((new Date() - gameInstance.turnStartTime) / 1000);
+            const remaining = timeLimit - elapsed;
             
-            if (timeRemaining <= 0) {
-                console.log(`⏰ Zeit abgelaufen für Spiel ${game.name}`);
-                this.forceTurnEnd(game);
+            if (remaining <= 0) {
+                this.forceTurnEnd(gameInstance);
+            } else {
+                // Send time update to current player
+                const currentPlayer = this.getCurrentPlayer(gameInstance);
+                if (currentPlayer) {
+                    io.to(currentPlayer.socketId).emit('turn-timer-update', {
+                        remaining: remaining,
+                        total: timeLimit
+                    });
+                }
             }
         }, 1000);
         
         this.turnTimers.set(game.id, timer);
     }
 
-    clearTurnTimer(gameId) {
-        const timer = this.turnTimers.get(gameId);
-        if (timer) {
-            clearInterval(timer);
-            this.turnTimers.delete(gameId);
-        }
-    }
-
-    nextTurn(game) {
-        console.log(`⏭️ Nächster Zug in Spiel ${game.name}`);
-        
-        // Clear current turn timer
-        this.clearTurnTimer(game.id);
-        
-        // Generate gold income for current player
-        this.generateGoldIncome(game);
-        
-        // Reset unit states for current player
-        this.resetUnitsForNewTurn(game);
-        
-        // Move to next player
-        do {
-            game.currentTurnIndex = (game.currentTurnIndex + 1) % game.turnOrder.length;
-            
-            // New round started
-            if (game.currentTurnIndex === 0) {
-                game.turnNumber++;
-                console.log(`🔄 Neue Runde ${game.turnNumber} in Spiel ${game.name}`);
-            }
-        } while (this.getCurrentPlayer(game)?.defeated);
-        
-        // Check win condition
-        if (this.checkWinCondition(game)) {
-            return; // Game ended
-        }
-        
-        // Start new turn
-        game.turnStartTime = new Date();
-        this.startTurnTimer(game);
-        
-        const currentPlayer = this.getCurrentPlayer(game);
-        console.log(`🎯 ${currentPlayer.name} ist jetzt dran`);
-        
-        // Notify all players
-        io.to(game.id).emit('turn-started', {
-            currentPlayer: currentPlayer.name,
-            currentPlayerId: currentPlayer.id,
-            turnNumber: game.turnNumber,
-            timeLimit: game.settings.turnTimeLimit
-        });
-    }
-
-    forceTurnEnd(game) {
-        const currentPlayer = this.getCurrentPlayer(game);
-        console.log(`⏰ Erzwinge Zugwende für ${currentPlayer?.name} in Spiel ${game.name}`);
-        
-        // Notify current player
-        if (currentPlayer) {
-            io.to(currentPlayer.socketId).emit('turn-forced', {
-                message: 'Zeit abgelaufen! Zug wird automatisch beendet.'
-            });
-        }
-        
-        this.nextTurn(game);
-    }
-
-    generateGoldIncome(game) {
-        const currentPlayer = this.getCurrentPlayer(game);
-        if (!currentPlayer) return;
-        
-        let income = 0;
-        
-        // Calculate income from buildings
-        currentPlayer.buildings.forEach(building => {
-            if (building.type === 'city') income += 2;
-            if (building.type === 'castle') income += 5;
-        });
-        
-        // Apply multipliers (race bonuses, etc.)
-        income = Math.floor(income * this.config.GOLD_INCOME_MULTIPLIER);
-        
-        if (income > 0) {
-            currentPlayer.gold += income;
-            
-            console.log(`💰 ${currentPlayer.name} erhält ${income} Gold (Gesamt: ${currentPlayer.gold})`);
-            
-            // Notify player
-            io.to(currentPlayer.socketId).emit('gold-updated', {
-                amount: currentPlayer.gold,
-                income: income,
-                source: 'buildings'
-            });
-        }
-    }
-
-    resetUnitsForNewTurn(game) {
-        const currentPlayer = this.getCurrentPlayer(game);
-        if (!currentPlayer) return;
-        
-        currentPlayer.units.forEach(unit => {
-            unit.hasMoved = false;
-            unit.hasActed = false;
-        });
-        
-        console.log(`🔄 Einheiten für ${currentPlayer.name} zurückgesetzt`);
+    getCurrentPlayer(game) {
+        if (!game.turnOrder || game.turnOrder.length === 0) return null;
+        return game.turnOrder[game.currentTurnIndex];
     }
 
     checkWinCondition(game) {
-        const activePlayers = game.players.filter(p => !p.defeated && p.buildings.length > 0);
+        const activePlayers = game.players.filter(p => !p.defeated);
         
-        if (activePlayers.length <= 1) {
+        if (activePlayers.length === 1) {
+            // Game won by remaining player
             const winner = activePlayers[0];
-            this.endGame(game, winner);
+            game.status = 'finished';
+            game.winner = winner.id;
+            
+            console.log(`🏆 Spiel ${game.name} beendet! Gewinner: ${winner.name}`);
+            
+            io.to(game.id).emit('game-ended', {
+                winner: winner.name,
+                winnerId: winner.id,
+                message: `${winner.name} hat das Spiel gewonnen!`
+            });
+            
+            return true;
+        } else if (activePlayers.length === 0) {
+            // All players defeated (draw)
+            game.status = 'finished';
+            game.winner = null;
+            
+            console.log(`🤝 Spiel ${game.name} beendet! Unentschieden - alle Spieler besiegt`);
+            
+            io.to(game.id).emit('game-ended', {
+                winner: null,
+                message: 'Unentschieden - alle Spieler besiegt!'
+            });
+            
             return true;
         }
         
@@ -1296,6 +1293,113 @@ class EnhancedGameManager {
             settings: game.settings
         };
     }
+
+    clearTurnTimer(gameId) {
+        const timer = this.turnTimers.get(gameId);
+        if (timer) {
+            clearInterval(timer);
+            this.turnTimers.delete(gameId);
+        }
+    }
+
+    nextTurn(game) {
+        console.log(`⏭️ Nächster Zug in Spiel ${game.name}`);
+        
+        // Clear current turn timer
+        this.clearTurnTimer(game.id);
+        
+        // Generate gold income for current player
+        this.generateGoldIncome(game);
+        
+        // Reset unit states for current player
+        this.resetUnitsForNewTurn(game);
+        
+        // Move to next player
+        do {
+            game.currentTurnIndex = (game.currentTurnIndex + 1) % game.turnOrder.length;
+            
+            // New round started
+            if (game.currentTurnIndex === 0) {
+                game.turnNumber++;
+                console.log(`🔄 Neue Runde ${game.turnNumber} in Spiel ${game.name}`);
+            }
+        } while (this.getCurrentPlayer(game)?.defeated);
+        
+        // Check win condition
+        if (this.checkWinCondition(game)) {
+            return; // Game ended
+        }
+        
+        // Start new turn
+        game.turnStartTime = new Date();
+        this.startTurnTimer(game);
+        
+        const currentPlayer = this.getCurrentPlayer(game);
+        console.log(`🎯 ${currentPlayer.name} ist jetzt dran`);
+        
+        // Notify all players
+        io.to(game.id).emit('turn-started', {
+            currentPlayer: currentPlayer.name,
+            currentPlayerId: currentPlayer.id,
+            turnNumber: game.turnNumber,
+            timeLimit: game.settings.turnTimeLimit
+        });
+    }
+
+    forceTurnEnd(game) {
+        const currentPlayer = this.getCurrentPlayer(game);
+        console.log(`⏰ Erzwinge Zugwende für ${currentPlayer?.name} in Spiel ${game.name}`);
+        
+        // Notify current player
+        if (currentPlayer) {
+            io.to(currentPlayer.socketId).emit('turn-forced', {
+                message: 'Zeit abgelaufen! Zug wird automatisch beendet.'
+            });
+        }
+        
+        this.nextTurn(game);
+    }
+
+    generateGoldIncome(game) {
+        const currentPlayer = this.getCurrentPlayer(game);
+        if (!currentPlayer) return;
+        
+        let income = 0;
+        
+        // Calculate income from buildings
+        currentPlayer.buildings.forEach(building => {
+            if (building.type === 'city') income += 2;
+            if (building.type === 'castle') income += 5;
+        });
+        
+        // Apply multipliers (race bonuses, etc.)
+        income = Math.floor(income * this.config.GOLD_INCOME_MULTIPLIER);
+        
+        if (income > 0) {
+            currentPlayer.gold += income;
+            
+            console.log(`💰 ${currentPlayer.name} erhält ${income} Gold (Gesamt: ${currentPlayer.gold})`);
+            
+            // Notify player
+            io.to(currentPlayer.socketId).emit('gold-updated', {
+                amount: currentPlayer.gold,
+                income: income,
+                source: 'buildings'
+            });
+        }
+    }
+
+    resetUnitsForNewTurn(game) {
+        const currentPlayer = this.getCurrentPlayer(game);
+        if (!currentPlayer) return;
+        
+        currentPlayer.units.forEach(unit => {
+            unit.hasMoved = false;
+            unit.hasActed = false;
+        });
+        
+        console.log(`🔄 Einheiten für ${currentPlayer.name} zurückgesetzt`);
+    }
 }
 
 const gameManager = new EnhancedGameManager();
@@ -1442,18 +1546,42 @@ io.on('connection', (socket) => {
     // ========================================
 
     socket.on('select-race', (data) => {
-        const result = gameManager.selectRace(data.gameId, data.playerId || socket.id, data.raceId);
+        console.log('🏛️ Rassen-Auswahl erhalten:', data);
+        
+        // Find the player by socket ID first
+        const game = gameManager.games.get(data.gameId);
+        if (!game) {
+            socket.emit('race-selection-failed', { error: 'Spiel nicht gefunden' });
+            return;
+        }
+        
+        // Find player by socket ID
+        const player = game.players.find(p => p.socketId === socket.id);
+        if (!player) {
+            console.error('❌ Spieler nicht im Spiel gefunden:', socket.id);
+            socket.emit('race-selection-failed', { error: 'Spieler nicht im Spiel gefunden' });
+            return;
+        }
+        
+        console.log(`✅ Spieler gefunden: ${player.name} (ID: ${player.id}, Socket: ${player.socketId})`);
+        
+        // Use the found player's ID for race selection
+        const result = gameManager.selectRace(data.gameId, player.id, data.raceId);
         
         if (result.success) {
             // Notify all players about race selection
             io.to(data.gameId).emit('race-selected', {
-                playerName: result.game.players.find(p => (p.id === data.playerId || p.socketId === socket.id))?.name,
-                playerId: data.playerId || socket.id,
+                playerName: player.name,
+                playerId: player.id,
                 raceId: data.raceId
             });
             
+            console.log(`🏛️ Rasse gewählt: ${player.name} hat ${data.raceId} gewählt`);
+            
             // If all races selected, start the game
             if (result.allSelected) {
+                console.log('🎯 Alle Rassen gewählt - starte Spiel...');
+                
                 const startedGame = gameManager.startGameAfterRaceSelection(result.game);
                 
                 io.to(data.gameId).emit('all-races-selected', {
@@ -1468,6 +1596,7 @@ io.on('connection', (socket) => {
                 }, 2000);
             }
         } else {
+            console.error('❌ Rassen-Auswahl fehlgeschlagen:', result.error);
             socket.emit('race-selection-failed', {
                 error: result.error
             });
