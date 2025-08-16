@@ -23,6 +23,11 @@ class SocketManager {
     // ========================================
 
     initSocket() {
+        if (this.socket && this.isConnected) {
+            console.log('🔌 Bereits verbunden, überspringe Socket-Initialisierung');
+            return;
+        }
+        
         console.log('🔌 Initialisiere Socket.io Verbindung...');
         
         try {

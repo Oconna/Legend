@@ -27,35 +27,40 @@ class GameController {
     // INITIALIZATION
     // ========================================
 
-    async init() {
-        console.log('🔧 Initialisiere Game Controller...');
+    initialize() {
+        console.log('🚀 Initialisiere Game Controller...');
         
-        try {
-            // Parse game settings from URL
-            this.parseGameSettings();
-            
-            // Initialize core systems
-            await this.initializeSystems();
-            
-            // Setup event handlers
-            this.setupEventHandlers();
-            
-            // Setup UI
-            this.setupUI();
-            
-            // Start game flow
-            this.startGameFlow();
-            
-            this.isInitialized = true;
-            console.log('✅ Game Controller initialisiert');
-            
-        } catch (error) {
-            console.error('❌ Fehler bei Game Controller Initialisierung:', error);
-            this.showError('Fehler beim Laden des Spiels');
-        }
+        // Load game settings
+        this.loadGameSettings();
+        
+        // Load races data
+        this.loadRacesData();
+        
+        // Initialize socket manager
+        this.initializeSocketManager();
+        
+        // Initialize map system
+        this.initializeMapSystem();
+        
+        // Initialize race selection
+        this.initializeRaceSelection();
+        
+        // Setup event handlers
+        this.setupEventHandlers();
+        
+        // Setup UI integration
+        this.setupUIIntegration();
+        
+        // Setup map integration
+        this.setupMapIntegration();
+        
+        // Start game flow
+        this.startGameFlow();
+        
+        console.log('✅ Game Controller initialisiert');
     }
 
-    parseGameSettings() {
+    loadGameSettings() {
         const urlParams = new URLSearchParams(window.location.search);
         const settingsParam = urlParams.get('settings');
         
@@ -80,103 +85,41 @@ class GameController {
         this.gameState.setMapSize(this.gameSettings.mapSize);
     }
 
-    async initializeSystems() {
-        // Load race data first
-        await this.loadRaceData();
-        
-        // Initialize Socket Manager
-        if (window.SocketManager) {
-            this.socketManager = new window.SocketManager();
-            if (this.socketManager.socket) {
-                this.gameState.setSocket(this.socketManager.socket);
-                console.log('🔌 Socket Manager initialisiert');
+    loadRacesData() {
+        try {
+            console.log('🔍 Lade Rassen-Daten...');
+            
+            // Check if races are already loaded
+            if (window.LOADED_RACES && window.LOADED_RACES.length > 0) {
+                console.log('🏛️ Rassen bereits geladen:', window.LOADED_RACES.length);
+                return;
             }
-        } else {
-            console.error('❌ Socket Manager nicht verfügbar');
-            this.showError('Multiplayer-System nicht verfügbar');
-            return;
-        }
-        
-        // Initialize Map System
-        if (window.MapSystem) {
-            this.mapSystem = new window.MapSystem(this.gameSettings);
-            console.log('🗺️ Map System initialisiert');
-        }
-        
-        // Initialize Race Selection AFTER races are loaded
-        if (window.RaceSelection) {
-            try {
-                // Ensure races are available before initializing race selection
-                if (!window.LOADED_RACES || window.LOADED_RACES.length === 0) {
-                    console.warn('⚠️ Keine Rassen verfügbar, verwende FALLBACK_RACES');
+            
+            // Try to load races from races-data.json
+            fetch('/races-data.json')
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    throw new Error('Rassen-Daten konnten nicht geladen werden');
+                })
+                .then(races => {
+                    console.log('🏛️ Rassen-Daten geladen:', races.length);
+                    window.LOADED_RACES = races;
+                })
+                .catch(error => {
+                    console.warn('⚠️ Verwende Fallback-Rassen:', error.message);
                     if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
                         window.LOADED_RACES = window.FALLBACK_RACES;
                     }
-                }
+                });
                 
-                // Check if race selection is already initialized
-                if (window.raceSelection && window.raceSelection.isInitialized) {
-                    console.log('🏛️ Race Selection bereits initialisiert, verwende bestehende Instanz');
-                    this.raceSelection = window.raceSelection;
-                } else {
-                    console.log('🏛️ Erstelle neue Race Selection Instanz...');
-                    window.raceSelection = new window.RaceSelection();
-                    this.raceSelection = window.raceSelection;
-                    
-                    // Wait for race selection to be fully initialized
-                    const checkInit = () => {
-                        if (this.raceSelection && this.raceSelection.isInitialized) {
-                            console.log('✅ Race Selection vollständig initialisiert');
-                        } else {
-                            console.log('⏳ Race Selection noch nicht bereit, warte...');
-                            setTimeout(checkInit, 100);
-                        }
-                    };
-                    checkInit();
-                }
-                
-                console.log('🏛️ Race Selection initialisiert:', this.raceSelection);
-                
-
-            } catch (error) {
-                console.error('❌ Fehler beim Initialisieren der Race Selection:', error);
-            }
-        } else {
-            console.error('❌ RaceSelection Klasse nicht verfügbar');
-        }
-        
-        console.log('🏛️ Race Selection wartet auf Initialisierung...');
-    }
-
-    async loadRaceData() {
-        try {
-            console.log('🔍 Lade Rassen-Daten...');
-            const response = await fetch('/races-data.json');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.races && Array.isArray(data.races)) {
-                    window.LOADED_RACES = data.races;
-                    console.log('🏛️ Rassen-Daten geladen:', data.races.length, 'Rassen');
-                    console.log('🔍 LOADED_RACES nach dem Laden:', window.LOADED_RACES);
-                    return;
-                } else {
-                    console.warn('⚠️ Ungültiges Rassen-Daten-Format:', data);
-                }
-            } else {
-                console.warn('⚠️ Konnte races-data.json nicht laden:', response.status, response.statusText);
-            }
         } catch (error) {
-            console.warn('⚠️ Konnte Rassen-Daten nicht laden:', error);
-        }
-        
-        // Fallback zu FALLBACK_RACES
-        if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
-            window.LOADED_RACES = window.FALLBACK_RACES;
-            console.log('🏛️ Fallback-Rassen verwendet:', window.FALLBACK_RACES.length, 'Rassen');
-            console.log('🔍 LOADED_RACES nach Fallback:', window.LOADED_RACES);
-        } else {
-            console.error('❌ Weder races-data.json noch FALLBACK_RACES verfügbar!');
-            window.LOADED_RACES = [];
+            console.error('❌ Fehler beim Laden der Rassen-Daten:', error);
+            // Use fallback races if available
+            if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
+                window.LOADED_RACES = window.FALLBACK_RACES;
+            }
         }
     }
 
@@ -185,30 +128,34 @@ class GameController {
     // ========================================
 
     setupEventHandlers() {
+        // Game phase change events
+        window.addEventListener('gamePhaseChanged', (event) => {
+            this.onGamePhaseChanged(event.detail);
+        });
+
+        // Race selection events
+        window.addEventListener('raceConfirmed', (event) => {
+            console.log('🏛️ Rasse bestätigt:', event.detail.race);
+            this.handleRaceConfirmed(event.detail);
+        });
+
+        window.addEventListener('allRacesSelected', (event) => {
+            console.log('🎯 Alle Rassen gewählt Event empfangen:', event.detail);
+            this.handleAllRacesSelected(event.detail);
+        });
+
         // Socket events
         if (this.socketManager) {
-            this.setupSocketEvents();
-            this.setupSocketEventHandlers();
+            this.socketManager.on('race-selected', (data) => this.handleRaceSelected(data));
+            this.socketManager.on('all-races-selected', (data) => this.handleAllRacesSelected(data));
+            this.socketManager.on('game-started', (data) => this.handleGameStarted(data));
+            this.socketManager.on('turn-started', (data) => this.handleTurnStarted(data));
+            this.socketManager.on('map-updated', (data) => this.handleMapUpdated(data));
+            this.socketManager.on('disconnect', () => this.handleDisconnect());
+            this.socketManager.on('reconnect', () => this.handleReconnect());
         }
-        
-        // Game state events
-        this.gameState.on('gamePhaseChanged', (data) => this.onGamePhaseChanged(data));
-        this.gameState.on('isMyTurnChanged', (data) => this.onTurnChanged(data));
-        this.gameState.on('selectedUnitChanged', (data) => this.onUnitSelectionChanged(data));
-        this.gameState.on('goldChanged', (data) => this.onGoldChanged(data));
-        
-        // Window events
-        window.addEventListener('beforeunload', () => this.cleanup());
-        window.addEventListener('gameJoined', (e) => this.onGameJoined(e.detail));
-        
-        // Custom game events
-        window.addEventListener('raceConfirmed', (e) => this.onRaceConfirmed(e.detail));
-        window.addEventListener('allRacesSelected', (e) => this.onAllRacesSelected(e.detail));
-        window.addEventListener('unitPurchased', (e) => this.onUnitPurchased(e.detail));
-        window.addEventListener('endTurnRequested', () => this.endTurn());
-        window.addEventListener('gameStateFailed', (e) => this.onGameStateFailed(e.detail));
-        
-        console.log('🎯 Event Handler eingerichtet');
+
+        console.log('📡 Event Handler eingerichtet');
     }
 
     setupSocketEvents() {
@@ -284,10 +231,7 @@ class GameController {
         });
 
         // Map events
-        this.socketManager.socket.on('map-updated', (data) => {
-            console.log('🗺️ Karte aktualisiert:', data);
-            this.handleMapUpdated(data);
-        });
+        this.socketManager.socket.on('map-updated', (data) => this.onMapUpdated(data));
 
         // Connection events
         this.socketManager.socket.on('disconnect', () => {
@@ -312,6 +256,21 @@ class GameController {
             // Check if all races are selected
             this.checkIfAllRacesSelected();
         }
+    }
+
+    handleRaceConfirmed(data) {
+        console.log('🏛️ Rasse bestätigt:', data.race);
+        
+        // Update current player's race in game state
+        if (data.race) {
+            this.gameState.setSelectedRace(data.race);
+        }
+        
+        // Update race status panel
+        this.updateRaceStatusPanel();
+        
+        // Check if all races are selected
+        this.checkIfAllRacesSelected();
     }
 
     handleAllRacesSelected(data) {
@@ -400,17 +359,19 @@ class GameController {
     }
 
     handleReconnect() {
-        console.log('✅ Verbindung wiederhergestellt');
+        console.log('🔄 Verbindung wiederhergestellt');
         
-        // Hide error message
-        this.hideError();
+        // Show success message
+        this.showNotification('Verbindung wiederhergestellt!', 'success');
         
-        // Rejoin game if needed
+        // Try to rejoin the game
         if (this.gameSettings?.gameId) {
-            this.socketManager.emit('rejoin-game', {
-                gameId: this.gameSettings.gameId,
-                player: this.gameState.currentPlayer
-            });
+            if (this.socketManager && this.socketManager.socket) {
+                this.socketManager.emit('join-game', {
+                    gameId: this.gameSettings.gameId,
+                    player: this.gameSettings.currentPlayer
+                });
+            }
         }
     }
 
@@ -421,170 +382,89 @@ class GameController {
     startGameFlow() {
         console.log('🎮 Starte Spielablauf...');
         
-        // Update UI for initial state
-        this.updateUIForPhase('lobby');
+        // Check if we're in demo mode (no server connection)
+        if (!this.socketManager || !this.socketManager.isConnected) {
+            console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
+            setTimeout(() => this.startDemoMode(), 1000);
+            return;
+        }
         
-        // Wait for server to start the game
-        this.setGamePhase('lobby');
-        
-        // Don't request game state immediately - wait for gameJoined event
-        // The socket manager will automatically join the game when connected
+        // Wait for game to be joined
         console.log('⏳ Warte auf Spielbeitritt...');
         
-        // Demo-Modus: Wenn nach 8 Sekunden keine Server-Verbindung, starte automatisch
-        setTimeout(() => {
-            if (!this.socketManager || !this.socketManager.socket || !this.socketManager.socket.connected) {
-                console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
-                this.startDemoMode();
-            } else {
-                // If we're connected but haven't joined a game, start demo mode anyway
-                console.log('🤖 Demo-Modus: Verbunden aber kein Spiel beigetreten, starte automatisch...');
-                this.startDemoMode();
+        // Check if we need to join a game
+        if (this.gameSettings?.gameId) {
+            // Try to join the game
+            if (this.socketManager && this.socketManager.socket) {
+                this.socketManager.emit('join-game', {
+                    gameId: this.gameSettings.gameId,
+                    player: this.gameSettings.currentPlayer
+                });
             }
-        }, 8000); // Increased delay to give more time for server connection
+        }
     }
 
     startDemoMode() {
         console.log('🤖 Starte Demo-Modus...');
         
-        // Simuliere Spielstart
+        // Set game phase to race selection
         this.setGamePhase('race_selection');
         
-        // Starte Rassenauswahl sofort
-        console.log('🤖 Demo-Modus: Starte Rassenauswahl...');
-        console.log('🤖 Demo-Modus: Race Selection verfügbar?', !!this.raceSelection);
-        console.log('🤖 Demo-Modus: LOADED_RACES verfügbar?', !!window.LOADED_RACES);
-        console.log('🤖 Demo-Modus: LOADED_RACES Anzahl:', window.LOADED_RACES ? window.LOADED_RACES.length : 'undefined');
-        
+        // Start race selection
         this.startRaceSelection();
         
-        // Ensure modal is shown with proper timing
-        if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-            console.log('🤖 Demo-Modus: Zeige Race Selection Modal...');
-            // Add a delay to ensure race selection is fully initialized
-            setTimeout(() => {
-                if (this.raceSelection && this.raceSelection.isInitialized) {
-                    this.raceSelection.show();
-                } else {
-                    console.error('🤖 Demo-Modus: Race Selection nicht bereit');
-                }
-            }, 1000); // Increased delay to ensure proper initialization
-        } else {
-            console.error('🤖 Demo-Modus: Race Selection Modal kann nicht angezeigt werden');
-        }
+        console.log('🤖 Demo-Modus: Rassenauswahl gestartet');
     }
 
     setGamePhase(phase) {
-        const oldPhase = this.gamePhase;
-        this.gamePhase = phase;
-        this.gameState.setGamePhase(phase);
-        
+        const oldPhase = this.gameState.gamePhase;
         console.log(`🔄 Spielphase: ${oldPhase} → ${phase}`);
         
-        // Update UI based on phase
+        // Update game state
+        this.gameState.setGamePhase(phase);
+        
+        // Update UI for new phase
         this.updateUIForPhase(phase);
         
-        // Handle race selection phase specifically
-        if (phase === 'race_selection' && this.raceSelection && typeof this.raceSelection.show === 'function') {
-            console.log('🏛️ setGamePhase: Zeige Race Selection Modal...');
-            // Add a small delay to ensure everything is ready
-            setTimeout(() => {
-                if (this.raceSelection && this.raceSelection.isInitialized) {
+        // Handle phase-specific logic
+        switch (phase) {
+            case 'race_selection':
+                console.log('🏛️ setGamePhase: Zeige Race Selection Modal...');
+                if (this.raceSelection && typeof this.raceSelection.show === 'function') {
                     this.raceSelection.show();
-                } else {
-                    console.warn('⚠️ Race Selection nicht bereit in setGamePhase');
                 }
-            }, 100);
-        } else if (phase === 'playing' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
-            console.log('🎮 setGamePhase: Verstecke Race Selection Modal...');
-            this.raceSelection.hide();
-        } else if (phase === 'lobby' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
-            console.log('🚪 setGamePhase: Verstecke Race Selection Modal (Lobby)...');
-            this.raceSelection.hide();
-        } else if (phase === 'finished' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
-            console.log('🏁 setGamePhase: Verstecke Race Selection Modal (Finished)...');
-            this.raceSelection.hide();
+                break;
+            case 'playing':
+                console.log('🎮 setGamePhase: Starte Spielphase...');
+                // Game phase logic is handled in startPlayingPhase
+                break;
+            case 'lobby':
+                console.log('🚪 setGamePhase: Verstecke Race Selection Modal (Lobby)...');
+                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+                    this.raceSelection.hide();
+                }
+                break;
         }
     }
 
     updateUIForPhase(phase) {
-        const turnIndicator = document.getElementById('turnIndicator');
-        const endTurnBtn = document.getElementById('endTurnBtn');
-        const timerDisplay = document.getElementById('timerDisplay');
+        console.log(`🔄 Spielphase geändert: {oldValue: '${this.gameState.gamePhase}', newValue: '${phase}'}`);
         
         switch (phase) {
-            case 'lobby':
-                if (turnIndicator) {
-                    turnIndicator.className = 'turn-indicator waiting';
-                    turnIndicator.innerHTML = '<span class="loading-spinner"></span> Warten auf Spielstart...';
-                }
-                if (endTurnBtn) endTurnBtn.disabled = true;
-                if (timerDisplay) timerDisplay.style.display = 'none';
-                
-                // Ensure race selection modal is hidden
-                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
-                    this.raceSelection.hide();
-                }
-                break;
-                
             case 'race_selection':
-                if (turnIndicator) {
-                    turnIndicator.className = 'turn-indicator waiting';
-                    turnIndicator.textContent = '🏛️ Rassen-Auswahl läuft...';
-                }
-                if (endTurnBtn) endTurnBtn.disabled = true;
-                if (timerDisplay) timerDisplay.style.display = 'none';
-                
-                // Show race status panel
-                const raceStatusPanel = document.getElementById('raceStatusPanel');
-                if (raceStatusPanel) {
-                    raceStatusPanel.style.display = 'block';
-                    this.updateRaceStatusPanel();
-                }
-                
-                // Ensure race selection modal is shown
+                console.log('🏛️ updateUIForPhase: Zeige Race Selection Modal...');
                 if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-                    console.log('🏛️ updateUIForPhase: Zeige Race Selection Modal...');
-                    // Add a small delay to ensure everything is ready
-                    setTimeout(() => {
-                        if (this.raceSelection && this.raceSelection.isInitialized) {
-                            this.raceSelection.show();
-                        } else {
-                            console.warn('⚠️ Race Selection nicht bereit, versuche später...');
-                        }
-                    }, 100);
-                } else {
-                    console.log('❌ Race Selection nicht verfügbar in updateUIForPhase');
-                    console.log('🔍 raceSelection:', this.raceSelection);
-                    console.log('🔍 window.raceSelection:', window.raceSelection);
+                    this.raceSelection.show();
                 }
                 break;
-                
             case 'playing':
-                if (turnIndicator) turnIndicator.className = 'turn-indicator waiting';
-                if (endTurnBtn) endTurnBtn.disabled = !this.gameState.isMyTurn;
-                if (timerDisplay) timerDisplay.style.display = 'block';
-                
-                // Hide race status panel
-                const raceStatusPanel2 = document.getElementById('raceStatusPanel');
-                if (raceStatusPanel2) {
-                    raceStatusPanel2.style.display = 'none';
-                }
-                
-                // Ensure race selection modal is hidden
+                console.log('🎮 updateUIForPhase: Verstecke Race Selection Modal...');
                 if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
                     this.raceSelection.hide();
                 }
-                
-                this.updateTurnUI();
                 break;
-                
-            case 'finished':
-                if (turnIndicator) turnIndicator.textContent = '🏁 Spiel beendet';
-                if (endTurnBtn) endTurnBtn.disabled = true;
-                if (timerDisplay) timerDisplay.style.display = 'none';
-                
-                // Ensure race selection modal is hidden
+            case 'lobby':
+                console.log('🚪 updateUIForPhase: Verstecke Race Selection Modal...');
                 if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
                     this.raceSelection.hide();
                 }
@@ -599,68 +479,29 @@ class GameController {
     startRaceSelection() {
         console.log('🏛️ Starte Rassen-Auswahl...');
         
-        this.setGamePhase('race_selection');
-        
-        // Stelle sicher, dass Rassen geladen sind
-        if (!window.LOADED_RACES || window.LOADED_RACES.length === 0) {
-            console.error('❌ Keine Rassen verfügbar!');
-            console.log('🔍 LOADED_RACES:', window.LOADED_RACES);
-            console.log('🔍 FALLBACK_RACES:', window.FALLBACK_RACES);
-            
-            // Versuche FALLBACK_RACES zu verwenden
-            if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
-                console.log('🔍 Verwende FALLBACK_RACES...');
-                window.LOADED_RACES = window.FALLBACK_RACES;
-            } else {
-                this.showError('Keine Rassen verfügbar');
-                return;
-            }
-        }
-        
-        console.log('🔍 Verfügbare Rassen:', window.LOADED_RACES.length);
-        
-        // Initialize Race Selection if not done yet
-        if (!window.raceSelection) {
-            console.log('🏛️ Initialisiere Race Selection...');
-            if (window.RaceSelection) {
-                try {
-                    window.raceSelection = new window.RaceSelection();
-                    this.raceSelection = window.raceSelection;
-                    console.log('✅ Race Selection erfolgreich initialisiert');
-                } catch (error) {
-                    console.error('❌ Fehler beim Initialisieren der Race Selection:', error);
-                    this.showError('Fehler beim Laden der Rassen-Auswahl');
-                    return;
-                }
-            } else {
-                console.error('❌ RaceSelection Klasse nicht verfügbar');
-                this.showError('RaceSelection Komponente nicht verfügbar');
-                return;
-            }
-        } else {
-            this.raceSelection = window.raceSelection;
-        }
-        
         // Ensure race selection is properly initialized
         if (!this.raceSelection || !this.raceSelection.isInitialized) {
             console.warn('⚠️ Race Selection noch nicht vollständig initialisiert, warte...');
-            setTimeout(() => this.startRaceSelection(), 1000); // Increased delay
+            setTimeout(() => this.startRaceSelection(), 1000);
             return;
         }
-        
-        // Show race selection modal with a small delay to ensure everything is ready
+
+        // Check if races are available
+        const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+        if (availableRaces.length === 0) {
+            console.error('❌ Keine Rassen verfügbar');
+            this.showError('Keine Rassen verfügbar');
+            return;
+        }
+
+        console.log('🔍 Verfügbare Rassen:', availableRaces.length);
+
+        // Show race selection modal
         if (this.raceSelection && typeof this.raceSelection.show === 'function') {
             console.log('🔍 Zeige Race Selection Modal');
-            setTimeout(() => {
-                if (this.raceSelection && this.raceSelection.isInitialized) {
-                    this.raceSelection.show();
-                } else {
-                    console.error('❌ Race Selection nicht mehr bereit beim Anzeigen');
-                }
-            }, 500); // Increased delay to ensure proper initialization
+            this.raceSelection.show();
         } else {
             console.error('❌ Race Selection show() Methode nicht verfügbar');
-            console.log('🔍 raceSelection Objekt:', this.raceSelection);
             this.showError('Rassen-Auswahl kann nicht angezeigt werden');
         }
     }
@@ -797,95 +638,77 @@ class GameController {
     }
 
     generateStartingUnits() {
-        if (!this.gameState.selectedRace || !this.mapSystem) return;
+        if (!this.gameState.selectedRace) {
+            console.warn('⚠️ Keine Rasse ausgewählt, überspringe Einheiten-Generierung');
+            return;
+        }
         
         const race = this.gameState.selectedRace;
-        const startingGold = race.startingGold || 100;
+        const startingUnits = race.startingUnits || [];
         
-        // Set starting gold
-        this.gameState.setPlayerGold(startingGold);
-        
-        // Find a starting position (near a city if possible)
-        const startPos = this.findStartingPosition();
-        
-        // Create starting unit (cheapest unit)
-        const units = race.units || [];
-        if (units.length === 0) return;
-        
-        const cheapestUnit = units.reduce((min, unit) => 
-            (unit.cost || 999) < (min.cost || 999) ? unit : min
-        );
-        
-        if (cheapestUnit && startPos) {
-            const startingUnit = this.createUnit(cheapestUnit, startPos.x, startPos.y);
-            this.gameState.data.playerUnits.push(startingUnit);
-            
-            // Place unit on map
-            if (this.mapSystem) {
-                this.mapSystem.placeUnit(startingUnit, startPos.x, startPos.y);
+        startingUnits.forEach(unitDef => {
+            // Find a valid starting position
+            const position = this.findStartingPosition();
+            if (position) {
+                const unit = this.createUnit(unitDef, position.x, position.y);
+                this.gameState.data.playerUnits.push(unit);
+                this.mapSystem.placeUnit(unit, position.x, position.y);
             }
-            
-            console.log(`👤 Starteinheit erstellt: ${cheapestUnit.name} bei (${startPos.x}, ${startPos.y})`);
-        }
+        });
+        
+        console.log(`🎯 ${startingUnits.length} Starteinheiten generiert`);
     }
 
     findStartingPosition() {
-        if (!this.mapSystem) return { x: 5, y: 5 };
-        
-        const mapSize = this.gameState.mapSize;
-        
-        // Look for cities first
-        for (let attempts = 0; attempts < 100; attempts++) {
-            const x = Math.floor(Math.random() * mapSize);
-            const y = Math.floor(Math.random() * mapSize);
-            
-            const tile = this.mapSystem.getTile(x, y);
-            if (tile && tile.terrain === 'city' && !tile.unit) {
-                return { x, y };
+        // Simple starting position logic - find empty grass tile
+        for (let x = 0; x < this.mapSystem.mapSize; x++) {
+            for (let y = 0; y < this.mapSystem.mapSize; y++) {
+                const tile = this.mapSystem.getTile(x, y);
+                if (tile && tile.type === 'grass' && !tile.unit) {
+                    return { x, y };
+                }
             }
         }
-        
-        // Fallback to any empty grass tile
-        for (let attempts = 0; attempts < 100; attempts++) {
-            const x = Math.floor(Math.random() * mapSize);
-            const y = Math.floor(Math.random() * mapSize);
-            
-            const tile = this.mapSystem.getTile(x, y);
-            if (tile && tile.terrain === 'grass' && !tile.unit) {
-                return { x, y };
-            }
-        }
-        
-        return { x: Math.floor(mapSize / 2), y: Math.floor(mapSize / 2) };
+        return null;
     }
 
     createUnit(unitDef, x, y) {
-        return {
-            id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-            definition: unitDef,
-            ownerId: this.gameState.currentPlayer.id,
+        const unit = {
+            id: Date.now() + Math.random(),
+            type: unitDef.id,
+            name: unitDef.name,
+            owner: this.gameState.currentPlayer?.name || 'Unknown',
             x: x,
             y: y,
+            health: unitDef.health || 100,
+            maxHealth: unitDef.health || 100,
+            attack: unitDef.attack || 10,
+            defense: unitDef.defense || 5,
+            movement: unitDef.movement || 2,
+            range: unitDef.range || 1,
             level: 1,
-            currentStats: { ...(unitDef.baseStats || { hp: 50, attack: 10, defense: 5, movement: 3 }) },
-            currentHp: unitDef.baseStats?.hp || 50,
-            hasMoved: false,
-            hasActed: false
+            experience: 0,
+            cost: unitDef.cost || 50
         };
+        
+        return unit;
     }
 
     startFirstTurn() {
-        const currentPlayer = this.gameState.data.currentTurnPlayer;
-        const isMyTurn = currentPlayer === this.gameState.currentPlayer.name;
+        console.log('🎯 Starte ersten Zug...');
         
-        this.gameState.setIsMyTurn(isMyTurn);
-        this.updateTurnUI();
+        // Reset unit movement and actions
+        this.gameState.data.playerUnits.forEach(unit => {
+            unit.movement = unit.maxMovement || 2;
+            unit.hasMoved = false;
+            unit.hasAttacked = false;
+        });
         
-        if (isMyTurn) {
-            this.startMyTurn();
-        }
+        // Update UI
+        this.updateTurnInfo();
+        this.updateUnitsOverview();
         
-        console.log(`🎯 Erster Zug gestartet: ${currentPlayer} ${isMyTurn ? '(Du)' : ''}`);
+        console.log('✅ Erster Zug gestartet');
     }
 
     startMyTurn() {
@@ -994,77 +817,81 @@ class GameController {
     // ========================================
 
     onGamePhaseChanged(data) {
-        console.log('🔄 Spielphase geändert:', data);
-        this.updateUIForPhase(data.newValue);
+        console.log('🔄 Game Phase geändert:', data);
         
-        // Handle specific phase changes
-        const newPhase = data.newValue;
-        switch (newPhase) {
-            case 'race_selection':
-                console.log('🏛️ Rassen-Auswahl Phase gestartet');
-                if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-                    // Add a small delay to ensure everything is ready
-                    setTimeout(() => {
-                        if (this.raceSelection && this.raceSelection.isInitialized) {
-                            console.log('🏛️ onGamePhaseChanged: Zeige Race Selection Modal...');
-                            this.raceSelection.show();
-                        } else {
-                            console.warn('⚠️ Race Selection nicht bereit in onGamePhaseChanged');
-                        }
-                    }, 200);
-                } else {
-                    console.warn('⚠️ Race Selection nicht verfügbar in onGamePhaseChanged');
-                }
-                break;
-                
-            case 'playing':
-                console.log('🎮 Spielphase gestartet');
-                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
-                    this.raceSelection.hide();
-                }
-                break;
-                
-            case 'finished':
-                console.log('🏁 Spiel beendet');
-                break;
+        if (data.newValue === 'race_selection') {
+            console.log('🏛️ onGamePhaseChanged: Zeige Race Selection Modal...');
+            if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+                this.raceSelection.show();
+            }
         }
     }
 
     onTurnChanged(data) {
         console.log('🎯 Zug geändert:', data);
-        this.updateTurnUI();
         
-        if (data.value) {
-            this.startMyTurn();
+        // Update turn info
+        this.updateTurnInfo();
+        
+        // Update end turn button
+        const endTurnBtn = document.getElementById('endTurnBtn');
+        if (endTurnBtn) {
+            endTurnBtn.disabled = !data.isMyTurn;
+        }
+        
+        // Show turn notification
+        if (data.isMyTurn) {
+            this.showNotification('Du bist am Zug!', 'success');
+        } else {
+            this.showNotification(`${data.currentPlayer} ist am Zug`, 'info');
         }
     }
 
     onUnitSelectionChanged(data) {
-        console.log('👤 Einheiten-Auswahl geändert:', data);
-        this.updateSelectedUnitUI(data.unit);
+        console.log('🎯 Einheit ausgewählt:', data.unit);
+        
+        // Update selected unit display
+        const selectedUnitDisplay = document.getElementById('selectedUnitDisplay');
+        if (selectedUnitDisplay && data.unit) {
+            selectedUnitDisplay.innerHTML = `
+                <h3>🎯 Ausgewählte Einheit</h3>
+                <p><strong>Name:</strong> ${data.unit.name}</p>
+                <p><strong>HP:</strong> ${data.unit.health}/${data.unit.maxHealth}</p>
+                <p><strong>Position:</strong> (${data.unit.x}, ${data.unit.y})</p>
+                <p><strong>Bewegung:</strong> ${data.unit.movement}</p>
+            `;
+        }
     }
 
     onGoldChanged(data) {
         console.log('💰 Gold geändert:', data);
-        this.updateGoldDisplay();
+        
+        // Update player display
+        this.updatePlayerDisplay();
+        
+        // Show gold change notification
+        if (data.oldValue !== undefined && data.newValue !== undefined) {
+            const change = data.newValue - data.oldValue;
+            if (change > 0) {
+                this.showNotification(`+${change} Gold erhalten!`, 'success');
+            } else if (change < 0) {
+                this.showNotification(`${Math.abs(change)} Gold ausgegeben`, 'info');
+            }
+        }
     }
 
     onRaceConfirmed(data) {
-        console.log('🏛️ Rasse bestätigt:', data);
+        console.log('🏛️ Rasse bestätigt:', data.race);
         
-        // Update game state
-        this.gameState.setSelectedRace(data.race);
-        
-        // Update UI
-        this.updatePlayerDisplay();
-        this.updateRaceStatusPanel();
-        
-        // Send race selection to server if available
-        if (this.socketManager && this.gameState.selectedRace) {
-            this.socketManager.selectRace(this.gameState.selectedRace.id);
+        // Update current player's race in game state
+        if (data.race) {
+            this.gameState.setSelectedRace(data.race);
         }
         
-        // Check if all players have selected races
+        // Update race status panel
+        this.updateRaceStatusPanel();
+        
+        // Check if all races are selected
         this.checkIfAllRacesSelected();
     }
 
@@ -1264,6 +1091,12 @@ class GameController {
 
     onUnitPurchased(data) {
         console.log('🛒 Einheit gekauft:', data);
+        
+        // Update units overview
+        this.updateUnitsOverview();
+        
+        // Show success message
+        this.showNotification('Einheit erfolgreich gekauft!', 'success');
     }
 
     onUnitPurchasedFromServer(data) {
@@ -1318,15 +1151,13 @@ class GameController {
     }
 
     onGameStateFailed(data) {
-        console.error('❌ Fehler beim Laden des Spielstands vom Server:', data.error);
+        console.error('❌ Spielstand konnte nicht geladen werden:', data);
         
-        // If we can't load the game state, try to start the race selection anyway
-        if (data.error === 'Spiel nicht gefunden') {
-            console.warn('⚠️ Spiel nicht gefunden, starte Rassenauswahl im Demo-Modus...');
-            this.startDemoMode();
-        } else {
-            this.showError('Fehler beim Laden des Spielstands');
-        }
+        // Show error message
+        this.showError('Spielstand konnte nicht geladen werden');
+        
+        // Start demo mode as fallback
+        setTimeout(() => this.startDemoMode(), 2000);
     }
 
     // ========================================
@@ -1379,24 +1210,41 @@ class GameController {
         }
     }
 
+    updateTurnInfo() {
+        const turnInfo = document.getElementById('turnInfo');
+        if (!turnInfo) return;
+        
+        const turnData = this.gameState.data.turnData;
+        if (!turnData) return;
+        
+        let html = `
+            <h3>🎯 Zug</h3>
+            <p><strong>Aktueller Spieler:</strong> ${turnData.currentPlayer || 'Unbekannt'}</p>
+            <p><strong>Zug-Nummer:</strong> ${turnData.turnNumber || 1}</p>
+            <p><strong>Mein Zug:</strong> ${turnData.isMyTurn ? '✅ Ja' : '❌ Nein'}</p>
+        `;
+        
+        turnInfo.innerHTML = html;
+    }
+
     updatePlayerDisplay() {
-        const playerName = document.getElementById('playerName');
-        const raceDisplay = document.getElementById('raceDisplay');
+        const playerDisplay = document.getElementById('playerDisplay');
+        if (!playerDisplay) return;
         
         const player = this.gameState.currentPlayer;
+        if (!player) return;
+        
         const race = this.gameState.selectedRace;
+        const raceName = race ? race.name : 'Keine Rasse';
         
-        if (playerName && player) {
-            const raceName = race ? ` (${race.name})` : '';
-            playerName.textContent = `${player.name}${raceName}`;
-        }
+        let html = `
+            <h3>👤 Spieler</h3>
+            <p><strong>Name:</strong> ${player.name}</p>
+            <p><strong>Rasse:</strong> ${raceName}</p>
+            <p><strong>Gold:</strong> ${this.gameState.playerGold || 0}</p>
+        `;
         
-        if (raceDisplay && race) {
-            raceDisplay.textContent = race.icon || '👑';
-            raceDisplay.style.color = race.color || '#3498db';
-        }
-        
-        this.updateGoldDisplay();
+        playerDisplay.innerHTML = html;
     }
 
     updateGoldDisplay() {
@@ -1449,126 +1297,69 @@ class GameController {
         const mapInfo = document.getElementById('mapInfo');
         if (!mapInfo) return;
         
-        const mapSize = this.gameState.mapSize;
-        const unitCount = this.gameState.data.playerUnits.length;
+        if (!this.mapSystem) return;
         
-        mapInfo.innerHTML = `
-            <strong>Spiel-Info:</strong><br>
-            Spieler: ${this.gameState.currentPlayer?.name || 'Unbekannt'}<br>
-            Spiel-ID: ${this.gameSettings?.gameId || 'Unbekannt'}<br>
-            <hr style="margin: 8px 0; opacity: 0.3;">
-            <strong>Deine Statistiken:</strong><br>
-            Kartengröße: ${mapSize}x${mapSize}<br>
-            Einheiten: ${unitCount}<br>
-            Gold: ${this.gameState.playerGold}<br>
-            Rasse: ${this.gameState.selectedRace?.name || 'Keine'}
+        const mapSize = this.mapSystem.mapSize || 30;
+        const tileCount = mapSize * mapSize;
+        
+        let html = `
+            <h3>🗺️ Karte</h3>
+            <p><strong>Größe:</strong> ${mapSize}x${mapSize}</p>
+            <p><strong>Felder:</strong> ${tileCount}</p>
         `;
+        
+        mapInfo.innerHTML = html;
     }
 
     updateUnitsOverview() {
-        const unitsList = document.getElementById('unitsList');
-        if (!unitsList) return;
+        const unitsOverview = document.getElementById('unitsOverview');
+        if (!unitsOverview) return;
         
-        const units = this.gameState.data.playerUnits;
+        const units = this.gameState.data.playerUnits || [];
         
+        let html = '<h3>🎯 Meine Einheiten</h3>';
         if (units.length === 0) {
-            unitsList.innerHTML = '<div class="info-display">Keine Einheiten</div>';
-            return;
+            html += '<p>Keine Einheiten vorhanden</p>';
+        } else {
+            units.forEach(unit => {
+                html += `
+                    <div class="unit-item">
+                        <span>${unit.name}</span>
+                        <span>HP: ${unit.health}/${unit.maxHealth}</span>
+                        <span>Level: ${unit.level}</span>
+                        <button class="upgrade-unit-btn" data-unit-id="${unit.id}">⬆️</button>
+                    </div>
+                `;
+            });
         }
         
-        unitsList.innerHTML = '';
+        unitsOverview.innerHTML = html;
         
-        units.forEach(unit => {
-            const unitItem = document.createElement('div');
-            unitItem.className = 'unit-item';
-            
-            if (this.gameState.selectedUnit && this.gameState.selectedUnit.id === unit.id) {
-                unitItem.classList.add('selected');
-            }
-            
-            const healthPercentage = Math.round((unit.currentHp / unit.currentStats.hp) * 100);
-            const statusIcons = [];
-            if (unit.hasMoved) statusIcons.push('🚶');
-            if (unit.hasActed) statusIcons.push('⚔️');
-            
-            unitItem.innerHTML = `
-                <div style="display: flex; align-items: center;">
-                    <span style="font-size: 1.2em; margin-right: 6px;">${unit.definition.icon || '❓'}</span>
-                    <div style="flex: 1;">
-                        <div style="font-weight: bold;">${unit.definition.name || 'Unbekannt'}</div>
-                        <div style="font-size: 9px; opacity: 0.8;">
-                            Lv${unit.level} | HP: ${healthPercentage}% | (${unit.x},${unit.y})
-                        </div>
-                    </div>
-                    <div style="font-size: 10px;">
-                        ${statusIcons.join(' ')}
-                    </div>
-                </div>
-            `;
-            
-            unitItem.addEventListener('click', () => {
-                this.gameState.selectUnit(unit);
-                this.gameState.selectTile(unit.x, unit.y);
-                
-                // Center camera on unit
-                if (this.mapSystem) {
-                    this.mapSystem.camera.x = (unit.x * this.mapSystem.tileSize) - (this.mapSystem.canvas.width / 2 / this.mapSystem.camera.zoom);
-                    this.mapSystem.camera.y = (unit.y * this.mapSystem.tileSize) - (this.mapSystem.canvas.height / 2 / this.mapSystem.camera.zoom);
-                    this.mapSystem.markForRedraw();
-                }
-                
-                this.updateUnitsOverview(); // Refresh to show selection
-            });
-            
-            unitsList.appendChild(unitItem);
-        });
+        // Re-attach event listeners
+        this.setupUIIntegration();
     }
 
     showNotification(message, type = 'info') {
+        console.log(`📢 ${type.toUpperCase()}: ${message}`);
+        
         // Create notification element
         const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: ${this.getNotificationColor(type)};
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            z-index: 10000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-            max-width: 300px;
-            word-wrap: break-word;
-        `;
+        notification.className = `notification notification-${type}`;
         notification.textContent = message;
-        document.body.appendChild(notification);
         
-        // Animate in
-        setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+        // Add to page
+        document.body.appendChild(notification);
         
         // Remove after delay
         setTimeout(() => {
-            notification.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 300);
-        }, window.GAME_CONFIG?.NOTIFICATION_DURATION || 4000);
-        
-        console.log(`📢 Notification [${type}]:`, message);
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
     }
 
     showError(message) {
         this.showNotification(message, 'error');
-        
-        // Redirect to lobby after error
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 5000);
     }
 
     getNotificationColor(type) {
@@ -1642,50 +1433,76 @@ class GameController {
         console.log('🚶 Bewegungs-Modus aktiviert für:', unit.definition.name);
     }
 
-    moveUnitTo(unit, targetX, targetY) {
-        if (!this.mapSystem || !this.mapSystem.canMoveToTile(unit, targetX, targetY)) {
-            this.showNotification('❌ Bewegung nicht möglich', 'error');
+    moveUnitTo(unit, toX, toY) {
+        if (!unit || !this.mapSystem) {
+            return false;
+        }
+        
+        const fromX = unit.x;
+        const fromY = unit.y;
+        
+        // Check if move is valid
+        if (!this.mapSystem.isValidPosition(toX, toY)) {
+            this.showNotification('❌ Ungültige Position', 'error');
+            return false;
+        }
+        
+        const targetTile = this.mapSystem.getTile(toX, toY);
+        if (targetTile.unit) {
+            this.showNotification('❌ Feld besetzt', 'error');
             return false;
         }
         
         // Calculate movement cost
-        const distance = Math.abs(unit.x - targetX) + Math.abs(unit.y - targetY);
-        if (distance > unit.currentStats.movement) {
-            this.showNotification('❌ Zu weit entfernt', 'error');
+        const movementCost = this.calculateMovementCost(unit, fromX, fromY, toX, toY);
+        if (unit.movement < movementCost) {
+            this.showNotification('❌ Nicht genug Bewegungspunkte', 'error');
             return false;
         }
         
         // Move unit
-        const success = this.mapSystem.moveUnit(unit, targetX, targetY);
-        if (success) {
-            // Send to server
-            if (this.socketManager) {
-                this.socketManager.emit('move-unit', {
-                    gameId: this.gameSettings.gameId,
-                    unitId: unit.id,
-                    fromX: unit.x,
-                    fromY: unit.y,
-                    toX: targetX,
-                    toY: targetY
-                });
-            }
-            
-            // Update UI
-            this.updateSelectedUnitUI(unit);
-            this.updateUnitsOverview();
-            
-            this.showNotification(`🚶 ${unit.definition.name} bewegt`, 'success');
-            console.log(`🚶 Einheit bewegt: ${unit.definition.name} zu (${targetX}, ${targetY})`);
+        unit.x = toX;
+        unit.y = toY;
+        unit.movement -= movementCost;
+        
+        // Update map
+        this.mapSystem.moveUnit(unit, fromX, fromY, toX, toY);
+        
+        // Send to server
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.moveUnit(unit.id, fromX, fromY, toX, toY);
         }
         
-        // Exit movement mode
-        this.gameState.updateState('movementMode', { active: false, unit: null });
+        // Clear movement mode
+        this.gameState.data.movementMode = null;
         
-        return success;
+        this.showNotification(`🚶 ${unit.name} bewegt nach (${toX}, ${toY})`, 'success');
+        return true;
     }
 
-    buyUnit(unitDef, x, y) {
-        if (!unitDef || this.gameState.playerGold < unitDef.cost) {
+    calculateMovementCost(unit, fromX, fromY, toX, toY) {
+        // Simple movement cost calculation
+        const distance = Math.abs(toX - fromX) + Math.abs(toY - fromY);
+        return distance;
+    }
+
+    buyUnit(unitType, x, y) {
+        console.log('💰 Buy Unit:', unitType, x, y);
+        
+        // Find unit definition
+        const race = this.gameState.selectedRace;
+        if (!race) {
+            this.showNotification('❌ Keine Rasse ausgewählt', 'error');
+            return false;
+        }
+        
+        const unitDef = race.units.find(u => u.id === unitType);
+        if (!unitDef) {
+            this.showNotification('❌ Einheitentyp nicht gefunden', 'error');
+            return false;
+        }
+        
+        if (this.gameState.playerGold < unitDef.cost) {
             this.showNotification('❌ Nicht genug Gold', 'error');
             return false;
         }
@@ -1714,13 +1531,8 @@ class GameController {
         this.mapSystem.placeUnit(newUnit, x, y);
         
         // Send to server
-        if (this.socketManager) {
-            this.socketManager.emit('buy-unit', {
-                gameId: this.gameSettings.gameId,
-                unitType: unitDef.id,
-                x: x,
-                y: y
-            });
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.buyUnit(unitType, x, y);
         }
         
         // Update UI
@@ -1779,48 +1591,62 @@ class GameController {
     // SETUP UI INTEGRATION
     // ========================================
 
-    setupUI() {
+    setupUIIntegration() {
         // End Turn Button
         const endTurnBtn = document.getElementById('endTurnBtn');
         if (endTurnBtn) {
             endTurnBtn.addEventListener('click', () => this.endTurn());
         }
-        
-        // Buy Units Button
-        const buyUnitsBtn = document.getElementById('buyUnitsBtn');
-        if (buyUnitsBtn) {
-            buyUnitsBtn.addEventListener('click', () => this.showUnitShop());
-        }
-        
-        // Map integration
-        if (this.mapSystem) {
-            this.setupMapIntegration();
-        }
-        
-        // Update UI initially
-        this.updatePlayerDisplay();
-        this.updateUnitsOverview();
-        this.updateMapInfo();
-        
+
+        // Unit Purchase Buttons
+        const buyUnitBtns = document.querySelectorAll('.buy-unit-btn');
+        buyUnitBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const unitType = e.target.dataset.unitType;
+                const x = parseInt(e.target.dataset.x);
+                const y = parseInt(e.target.dataset.y);
+                this.buyUnit(unitType, x, y);
+            });
+        });
+
+        // Unit Upgrade Buttons
+        const upgradeUnitBtns = document.querySelectorAll('.upgrade-unit-btn');
+        upgradeUnitBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const unitId = e.target.dataset.unitId;
+                this.upgradeUnit(unitId);
+            });
+        });
+
         console.log('🎨 UI Integration eingerichtet');
     }
 
     setupMapIntegration() {
-        // Listen for tile clicks for unit movement
-        this.mapSystem.canvas.addEventListener('click', (e) => {
-            const movementMode = this.gameState.data.movementMode;
-            if (!movementMode?.active) return;
-            
-            const rect = this.mapSystem.canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const gridPos = this.mapSystem.screenToGrid(x, y);
-            
-            if (this.mapSystem.isValidPosition(gridPos.x, gridPos.y)) {
-                this.moveUnitTo(movementMode.unit, gridPos.x, gridPos.y);
-            }
-        });
-        
+        if (!this.mapSystem) {
+            console.warn('⚠️ Map System nicht verfügbar für Integration');
+            return;
+        }
+
+        // Setup map click events
+        this.mapSystem.onMapClick = (x, y) => {
+            this.handleMapClick(x, y);
+        };
+
+        // Setup unit selection events
+        this.mapSystem.onUnitSelect = (unit) => {
+            this.handleUnitSelect(unit);
+        };
+
+        // Setup unit movement events
+        this.mapSystem.onUnitMove = (unit, fromX, fromY, toX, toY) => {
+            this.handleUnitMove(unit, fromX, fromY, toX, toY);
+        };
+
+        // Setup unit attack events
+        this.mapSystem.onUnitAttack = (attacker, defender) => {
+            this.handleUnitAttack(attacker, defender);
+        };
+
         console.log('🗺️ Map Integration eingerichtet');
     }
 
@@ -1834,7 +1660,7 @@ class GameController {
         const race = this.gameState.selectedRace;
         const units = race.units || [];
         
-        let shopHtml = '<h3>🛒 Einheiten kaufen</h3><div style="max-height: 300px; overflow-y: auto;">';
+        let shopHtml = '<h3>�� Einheiten kaufen</h3><div style="max-height: 300px; overflow-y: auto;">';
         
         units.forEach(unit => {
             const canAfford = this.gameState.playerGold >= unit.cost;
@@ -1969,19 +1795,162 @@ class GameController {
     // ========================================
 
     cleanup() {
-        console.log('🧹 Game Controller Cleanup...');
+        console.log('🧹 Cleanup Game Controller...');
         
-        if (this.turnTimer) {
-            clearInterval(this.turnTimer);
-            this.turnTimer = null;
-        }
-        
+        // Disconnect socket
         if (this.socketManager) {
             this.socketManager.disconnect();
         }
         
-        if (this.mapSystem) {
-            this.mapSystem.destroy();
+        // Remove event listeners
+        window.removeEventListener('gamePhaseChanged', this.onGamePhaseChanged);
+        window.removeEventListener('raceConfirmed', this.onRaceConfirmed);
+        window.removeEventListener('allRacesSelected', this.onAllRacesSelected);
+        window.removeEventListener('unitPurchased', this.onUnitPurchased);
+        window.removeEventListener('endTurnRequested', this.endTurn);
+        window.removeEventListener('gameStateFailed', this.onGameStateFailed);
+        
+        console.log('✅ Game Controller Cleanup abgeschlossen');
+    }
+
+    initializeSocketManager() {
+        if (this.socketManager) {
+            console.log('🔌 Socket Manager bereits initialisiert');
+            return;
+        }
+
+        // Wait for SocketManager class to be available
+        if (!window.SocketManager) {
+            console.warn('⚠️ SocketManager Klasse nicht verfügbar, warte...');
+            setTimeout(() => this.initializeSocketManager(), 100);
+            return;
+        }
+
+        // Create new socket manager instance
+        this.socketManager = new window.SocketManager();
+        
+        // Wait for socket manager to be ready
+        if (this.socketManager.isReady) {
+            this.setupSocketConnection();
+        } else {
+            // Wait for socket manager to be ready
+            const checkReady = () => {
+                if (this.socketManager.isReady) {
+                    this.setupSocketConnection();
+                } else {
+                    setTimeout(checkReady, 100);
+                }
+            };
+            checkReady();
+        }
+    }
+
+    setupSocketConnection() {
+        if (!this.socketManager || !this.socketManager.isReady) {
+            console.warn('⚠️ Socket Manager nicht bereit');
+            return;
+        }
+
+        // Connect to server
+        this.socketManager.connect();
+        
+        // Setup event handlers
+        this.setupEventHandlers();
+        
+        console.log('🔌 Socket Manager initialisiert');
+    }
+
+    initializeRaceSelection() {
+        // Check if race selection is already initialized
+        if (window.raceSelection && window.raceSelection.isInitialized) {
+            console.log('🏛️ Race Selection bereits initialisiert, verwende bestehende Instanz');
+            this.raceSelection = window.raceSelection;
+            return;
+        }
+
+        // Wait for race selection to be available
+        if (!window.RaceSelection) {
+            console.warn('⚠️ RaceSelection Klasse nicht verfügbar, warte...');
+            setTimeout(() => this.initializeRaceSelection(), 100);
+            return;
+        }
+
+        // Create new race selection instance
+        console.log('🏛️ Erstelle neue Race Selection Instanz...');
+        window.raceSelection = new window.RaceSelection();
+        this.raceSelection = window.raceSelection;
+        
+        console.log('🏛️ Race Selection initialisiert:', this.raceSelection);
+    }
+
+    initializeMapSystem() {
+        // Wait for MapSystem class to be available
+        if (!window.MapSystem) {
+            console.warn('⚠️ MapSystem Klasse nicht verfügbar, warte...');
+            setTimeout(() => this.initializeMapSystem(), 100);
+            return;
+        }
+
+        // Create new map system instance
+        this.mapSystem = new window.MapSystem(this.gameSettings);
+        console.log('🗺️ Map System initialisiert');
+    }
+
+    // ========================================
+    // MAP EVENT HANDLERS
+    // ========================================
+
+    handleMapClick(x, y) {
+        console.log('🗺️ Map Click:', x, y);
+        
+        // Handle map click based on current game state
+        if (this.gameState.data.movementMode?.active) {
+            this.moveUnitTo(this.gameState.data.movementMode.unit, x, y);
+        }
+    }
+
+    handleUnitSelect(unit) {
+        console.log('🎯 Unit Selected:', unit);
+        this.gameState.setSelectedUnit(unit);
+    }
+
+    handleUnitMove(unit, fromX, fromY, toX, toY) {
+        console.log('🚶 Unit Move:', unit, fromX, fromY, toX, toY);
+        
+        // Send move command to server
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.moveUnit(unit.id, fromX, fromY, toX, toY);
+        }
+    }
+
+    handleUnitAttack(attacker, defender) {
+        console.log('⚔️ Unit Attack:', attacker, defender);
+        
+        // Send attack command to server
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.attackUnit(attacker.id, defender.id);
+        }
+    }
+
+    // ========================================
+    // GAME ACTION METHODS
+    // ========================================
+
+    upgradeUnit(unitId) {
+        console.log('⬆️ Upgrade Unit:', unitId);
+        
+        // Send upgrade command to server
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.upgradeUnit(unitId);
+        }
+    }
+
+    endTurn() {
+        console.log('⏭️ End Turn');
+        
+        // Send end turn command to server
+        if (this.socketManager && this.socketManager.socket) {
+            this.socketManager.endTurn();
         }
     }
 }
