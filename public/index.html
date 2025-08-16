@@ -505,12 +505,21 @@
                 const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
                 const mapSize = parseInt(document.getElementById('mapSize').value);
 
-                if (!GameUtils.isValidName(playerName)) {
+                // Fallback-Validierung falls GameUtils noch nicht geladen ist
+                const isValidPlayerName = GameUtils ? 
+                    GameUtils.isValidName(playerName) : 
+                    (playerName.length >= 2 && playerName.length <= 20 && /^[a-zA-Z0-9\s_-]+$/.test(playerName));
+                    
+                const isValidGameName = GameUtils ? 
+                    GameUtils.isValidGameName(gameName) : 
+                    (gameName.length >= 3 && gameName.length <= 30 && /^[a-zA-Z0-9\s_-]+$/.test(gameName));
+
+                if (!isValidPlayerName) {
                     alert('Bitte gültigen Namen eingeben (2-20 Zeichen, nur Buchstaben, Zahlen, Leerzeichen, - und _)!');
                     return;
                 }
 
-                if (!GameUtils.isValidGameName(gameName)) {
+                if (!isValidGameName) {
                     alert('Bitte gültigen Spielnamen eingeben (3-30 Zeichen)!');
                     return;
                 }
@@ -537,7 +546,13 @@
 
             joinGame(gameId) {
                 const playerName = document.getElementById('playerName').value.trim();
-                if (!GameUtils.isValidName(playerName)) {
+                
+                // Fallback-Validierung
+                const isValidPlayerName = GameUtils ? 
+                    GameUtils.isValidName(playerName) : 
+                    (playerName.length >= 2 && playerName.length <= 20 && /^[a-zA-Z0-9\s_-]+$/.test(playerName));
+                    
+                if (!isValidPlayerName) {
                     alert('Bitte erst einen gültigen Namen eingeben!');
                     return;
                 }
@@ -586,10 +601,20 @@
                 games.forEach(game => {
                     const gameItem = document.createElement('div');
                     gameItem.className = 'game-item';
+                    
+                    // Fallback für sanitizeUserInput
+                    const sanitize = (input) => {
+                        if (GameUtils && GameUtils.sanitizeUserInput) {
+                            return GameUtils.sanitizeUserInput(input);
+                        }
+                        // Einfache Fallback-Sanitization
+                        return String(input).replace(/[<>'"]/g, '').trim().substring(0, 50);
+                    };
+                    
                     gameItem.innerHTML = `
                         <div class="game-info">
-                            <h3>${GameUtils.sanitizeUserInput(game.name)}</h3>
-                            <p>Host: ${GameUtils.sanitizeUserInput(game.hostName)} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
+                            <h3>${sanitize(game.name)}</h3>
+                            <p>Host: ${sanitize(game.hostName)} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
                         </div>
                         <button class="btn" onclick="lobby.joinGame('${game.id}')" 
                                 ${game.playerCount >= game.maxPlayers ? 'disabled' : ''}>
@@ -614,9 +639,21 @@
             updatePlayersGrid() {
                 if (!this.currentGame) return;
 
+            updatePlayersGrid() {
+                if (!this.currentGame) return;
+
                 const game = this.currentGame;
                 const playersGrid = document.getElementById('playersGrid');
                 playersGrid.innerHTML = '';
+
+                // Fallback für sanitizeUserInput
+                const sanitize = (input) => {
+                    if (GameUtils && GameUtils.sanitizeUserInput) {
+                        return GameUtils.sanitizeUserInput(input);
+                    }
+                    // Einfache Fallback-Sanitization
+                    return String(input).replace(/[<>'"]/g, '').trim().substring(0, 20);
+                };
 
                 for (let i = 0; i < game.maxPlayers; i++) {
                     const player = game.players[i];
@@ -626,7 +663,7 @@
                         const isCurrentPlayer = player.name === this.currentPlayer?.name;
                         slot.className = `player-slot occupied ${player.ready ? 'ready' : ''}`;
                         slot.innerHTML = `
-                            <div>👤 ${GameUtils.sanitizeUserInput(player.name)} ${isCurrentPlayer ? '(Du)' : ''}</div>
+                            <div>👤 ${sanitize(player.name)} ${isCurrentPlayer ? '(Du)' : ''}</div>
                             <div style="margin-top: 10px;">
                                 <span class="status-indicator ${player.ready ? 'status-ready' : 'status-waiting'}"></span>
                                 ${player.ready ? 'Bereit ✅' : 'Wartet... ⏳'}
@@ -784,15 +821,23 @@
             lobby.refreshGames();
         }
 
-        // Input-Validierung hinzufügen
-        document.addEventListener('DOMContentLoaded', () => {
+        // Input-Validierung hinzufügen - warten bis alle Scripts geladen sind
+        function initializeInputValidation() {
+            // Warten bis GameUtils verfügbar ist
+            if (typeof GameUtils === 'undefined') {
+                setTimeout(initializeInputValidation, 100);
+                return;
+            }
+            
             const playerNameInput = document.getElementById('playerName');
             const gameNameInput = document.getElementById('gameName');
             
             if (playerNameInput) {
                 playerNameInput.addEventListener('input', (e) => {
                     const value = e.target.value;
-                    const isValid = GameUtils.isValidName(value);
+                    
+                    // Fallback-Validierung falls GameUtils nicht verfügbar
+                    const isValid = GameUtils ? GameUtils.isValidName(value) : (value.length >= 2 && value.length <= 20);
                     
                     e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
                     
@@ -807,7 +852,9 @@
             if (gameNameInput) {
                 gameNameInput.addEventListener('input', (e) => {
                     const value = e.target.value;
-                    const isValid = GameUtils.isValidGameName(value);
+                    
+                    // Fallback-Validierung falls GameUtils nicht verfügbar
+                    const isValid = GameUtils ? GameUtils.isValidGameName(value) : (value.length >= 3 && value.length <= 30);
                     
                     e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
                     
@@ -820,7 +867,14 @@
             }
             
             console.log('✅ Lobby Input-Validierung aktiviert');
-        });
+        }
+
+        // Starte Initialisierung
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeInputValidation);
+        } else {
+            initializeInputValidation();
+        }
     </script>
 
 </body>
