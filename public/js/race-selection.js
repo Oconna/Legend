@@ -94,10 +94,17 @@ class RaceSelection {
             return;
         }
         
+        console.log('🔍 Starte Rassen-Rendering...');
+        console.log('🔍 Races Grid Element:', this.racesGrid);
+        
         this.racesGrid.innerHTML = '';
         
         // Verwende FALLBACK_RACES oder LOADED_RACES
         const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+        
+        console.log('🔍 Verfügbare Rassen:', availableRaces);
+        console.log('🔍 LOADED_RACES:', window.LOADED_RACES);
+        console.log('🔍 FALLBACK_RACES:', window.FALLBACK_RACES);
         
         if (availableRaces.length === 0) {
             console.error('❌ Keine Rassen verfügbar');
@@ -106,6 +113,7 @@ class RaceSelection {
         }
         
         availableRaces.forEach((race, index) => {
+            console.log(`🔍 Rendere Rasse ${index + 1}:`, race.name);
             const raceCard = this.createRaceCard(race, index);
             this.racesGrid.appendChild(raceCard);
         });
@@ -389,12 +397,17 @@ class RaceSelection {
         }
         
         console.log('🔍 Zeige Race Selection Modal');
+        console.log('🔍 Modal Element:', this.modal);
+        console.log('🔍 Modal display vorher:', this.modal.style.display);
         
         this.modal.style.display = 'flex';
         this.modal.setAttribute('aria-hidden', 'false');
         
+        console.log('🔍 Modal display nachher:', this.modal.style.display);
+        
         // Render races if not already done
         if (this.racesGrid && this.racesGrid.children.length === 0) {
+            console.log('🔍 Rende Rassen neu...');
             this.renderRaces();
         }
         
@@ -409,6 +422,8 @@ class RaceSelection {
         
         // Disable body scroll
         document.body.style.overflow = 'hidden';
+        
+        console.log('✅ Race Selection Modal sollte jetzt sichtbar sein');
     }
 
     hideModal() {

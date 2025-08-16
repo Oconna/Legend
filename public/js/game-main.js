@@ -103,11 +103,25 @@ class GameController {
             console.log('🗺️ Map System initialisiert');
         }
         
+        // Initialize Race Selection
+        if (window.RaceSelection) {
+            try {
+                window.raceSelection = new window.RaceSelection();
+                this.raceSelection = window.raceSelection;
+                console.log('🏛️ Race Selection initialisiert');
+            } catch (error) {
+                console.error('❌ Fehler beim Initialisieren der Race Selection:', error);
+            }
+        } else {
+            console.error('❌ RaceSelection Klasse nicht verfügbar');
+        }
+        
         console.log('🏛️ Race Selection wartet auf Initialisierung...');
     }
 
     async loadRaceData() {
         try {
+            console.log('🔍 Lade Rassen-Daten...');
             const response = await fetch('/races-data.json');
             if (response.ok) {
                 const data = await response.json();
@@ -115,15 +129,24 @@ class GameController {
                     window.LOADED_RACES = data.races;
                     console.log('🏛️ Rassen-Daten geladen:', data.races.length, 'Rassen');
                     return;
+                } else {
+                    console.warn('⚠️ Ungültiges Rassen-Daten-Format:', data);
                 }
+            } else {
+                console.warn('⚠️ Konnte races-data.json nicht laden:', response.status, response.statusText);
             }
         } catch (error) {
             console.warn('⚠️ Konnte Rassen-Daten nicht laden:', error);
         }
         
         // Fallback zu FALLBACK_RACES
-        window.LOADED_RACES = window.FALLBACK_RACES || [];
-        console.log('🏛️ Fallback-Rassen verwendet:', window.LOADED_RACES.length, 'Rassen');
+        if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
+            window.LOADED_RACES = window.FALLBACK_RACES;
+            console.log('🏛️ Fallback-Rassen verwendet:', window.FALLBACK_RACES.length, 'Rassen');
+        } else {
+            console.error('❌ Weder races-data.json noch FALLBACK_RACES verfügbar!');
+            window.LOADED_RACES = [];
+        }
     }
 
     // ========================================
@@ -203,6 +226,26 @@ class GameController {
                 this.socketManager.requestGameState();
             }, 1000);
         }
+        
+        // Demo-Modus: Wenn nach 3 Sekunden keine Server-Verbindung, starte automatisch
+        setTimeout(() => {
+            if (!this.socketManager || !this.socketManager.socket || !this.socketManager.socket.connected) {
+                console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
+                this.startDemoMode();
+            }
+        }, 3000);
+    }
+
+    startDemoMode() {
+        console.log('🤖 Starte Demo-Modus...');
+        
+        // Simuliere Spielstart
+        this.setGamePhase('race_selection');
+        
+        // Starte Rassenauswahl
+        setTimeout(() => {
+            this.startRaceSelection();
+        }, 500);
     }
 
     setGamePhase(phase) {
@@ -281,9 +324,20 @@ class GameController {
         // Stelle sicher, dass Rassen geladen sind
         if (!window.LOADED_RACES || window.LOADED_RACES.length === 0) {
             console.error('❌ Keine Rassen verfügbar!');
-            this.showError('Keine Rassen verfügbar');
-            return;
+            console.log('🔍 LOADED_RACES:', window.LOADED_RACES);
+            console.log('🔍 FALLBACK_RACES:', window.FALLBACK_RACES);
+            
+            // Versuche FALLBACK_RACES zu verwenden
+            if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
+                console.log('🔍 Verwende FALLBACK_RACES...');
+                window.LOADED_RACES = window.FALLBACK_RACES;
+            } else {
+                this.showError('Keine Rassen verfügbar');
+                return;
+            }
         }
+        
+        console.log('🔍 Verfügbare Rassen:', window.LOADED_RACES.length);
         
         // Initialize Race Selection if not done yet
         if (!window.raceSelection) {
@@ -314,6 +368,7 @@ class GameController {
                 this.raceSelection.show();
             } else {
                 console.error('❌ Race Selection show() Methode nicht verfügbar');
+                console.log('🔍 raceSelection Objekt:', this.raceSelection);
                 this.showError('Rassen-Auswahl kann nicht angezeigt werden');
             }
         }, 500);
