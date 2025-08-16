@@ -271,6 +271,126 @@ class GameState {
     return this.setPlayerGold(next);
   }
 
+  /* -------------------- Race Management (NEW METHODS) ---------------------- */
+
+  isRaceTaken(raceId) {
+    if (!raceId) return false;
+    
+    // Check if current player has selected this race
+    if (this.data.selectedRace && this.data.selectedRace.id === raceId) {
+      return false; // Current player can keep their selected race
+    }
+    
+    // Check if any other player has selected this race
+    for (const [playerName, selectedRaceId] of this.data.otherPlayersRaces) {
+      if (selectedRaceId === raceId && playerName !== this.data.currentPlayer?.name) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  getAllSelectedRaces() {
+    const selectedRaces = [];
+    
+    // Add current player's race if selected
+    if (this.data.selectedRace) {
+      selectedRaces.push({
+        playerName: this.data.currentPlayer?.name || 'Du',
+        raceId: this.data.selectedRace.id
+      });
+    }
+    
+    // Add other players' races
+    for (const [playerName, raceId] of this.data.otherPlayersRaces) {
+      if (playerName !== this.data.currentPlayer?.name) {
+        selectedRaces.push({ playerName, raceId });
+      }
+    }
+    
+    return selectedRaces;
+  }
+
+  getRaceSelectionStatus() {
+    const totalPlayers = this.data.gameSettings?.players?.length || this.data.allPlayers.length || 2;
+    const selectedRaces = this.getAllSelectedRaces();
+    
+    return {
+      totalPlayers,
+      selectedCount: selectedRaces.length,
+      isComplete: selectedRaces.length >= totalPlayers,
+      selectedRaces
+    };
+  }
+
+  /* ------------------------ Unit Management --------------------------------- */
+
+  addUnit(unit) {
+    if (!unit || !unit.id) {
+      console.warn('⚠️ Ungültige Einheit:', unit);
+      return false;
+    }
+    
+    const units = [...this.data.playerUnits];
+    const existingIndex = units.findIndex(u => u.id === unit.id);
+    
+    if (existingIndex >= 0) {
+      units[existingIndex] = unit; // Update existing
+    } else {
+      units.push(unit); // Add new
+    }
+    
+    this.updateState('playerUnits', units);
+    this.emit('playerUnitsChanged', { units });
+    return true;
+  }
+
+  removeUnit(unitId) {
+    const units = this.data.playerUnits.filter(u => u.id !== unitId);
+    this.updateState('playerUnits', units);
+    this.emit('playerUnitsChanged', { units });
+    return true;
+  }
+
+  updateUnit(unitId, updates) {
+    const units = [...this.data.playerUnits];
+    const unitIndex = units.findIndex(u => u.id === unitId);
+    
+    if (unitIndex >= 0) {
+      units[unitIndex] = { ...units[unitIndex], ...updates };
+      this.updateState('playerUnits', units);
+      this.emit('playerUnitsChanged', { units });
+      return true;
+    }
+    
+    return false;
+  }
+
+  getUnit(unitId) {
+    return this.data.playerUnits.find(u => u.id === unitId) || null;
+  }
+
+  /* ---------------------- Turn Management ------------------------------- */
+
+  nextTurn() {
+    // Reset all units for new turn
+    const units = this.data.playerUnits.map(unit => ({
+      ...unit,
+      hasMoved: false,
+      hasActed: false
+    }));
+    
+    this.updateState('playerUnits', units);
+    this.emit('playerUnitsChanged', { units });
+    
+    // Clear selections
+    this.clearSelection();
+    
+    console.log('🔄 Zug zurückgesetzt - Einheiten können wieder agieren');
+    return true;
+  }
+
   /* --------------------- Generische State-Update-Methoden ------------------- */
 
   updateState(key, value) {
@@ -404,6 +524,30 @@ class GameState {
       ...this.data,
       otherPlayersRaces: otherRaces,
     });
+  }
+
+  /* --------------------------- Debug Methods ------------------------------- */
+
+  getDebugInfo() {
+    const raceStatus = this.getRaceSelectionStatus();
+    
+    return {
+      gamePhase: this.data.gamePhase,
+      isConnected: this.data.isConnected,
+      currentPlayer: this.data.currentPlayer?.name,
+      selectedRace: this.data.selectedRace?.name,
+      isMyTurn: this.data.isMyTurn,
+      turnNumber: this.data.turnNumber,
+      playerGold: this.data.playerGold,
+      unitCount: this.data.playerUnits.length,
+      mapSize: this.data.mapSize,
+      raceSelection: raceStatus,
+      historySize: this.history.length
+    };
+  }
+
+  logState() {
+    console.table(this.getDebugInfo());
   }
 }
 

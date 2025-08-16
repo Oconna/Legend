@@ -773,3 +773,23 @@ class GameUtils {
                     <li>Edge 79+</li>
                 </ul>
             </div>
+        `;
+        document.body.innerHTML = message;
+    }
+}
+
+// ========================================
+// GLOBAL EXPORT FÜR BROWSER
+// ========================================
+
+// Mache GameUtils global verfügbar
+if (typeof window !== 'undefined') {
+    window.GameUtils = GameUtils;
+}
+
+// Export für Module
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = GameUtils;
+}
+
+console.log('✅ Game Utils vollständig geladen und exportiert');

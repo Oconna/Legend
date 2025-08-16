@@ -1,4 +1,3 @@
-// races-data.json - Externe Rassen-Definitionen
 {
   "version": "1.0.0",
   "lastUpdated": "2024-01-15",
@@ -604,6 +603,90 @@
     "regeneration": {
       "name": "Regeneration",
       "description": "Heilt sich selbst jede Runde"
+    },
+    "berserker_rage": {
+      "name": "Berserker-Wut",
+      "description": "Angriff steigt bei niedrigen HP"
+    },
+    "dark_magic": {
+      "name": "Dunkle Magie",
+      "description": "Schwächt Gegner"
+    },
+    "leadership": {
+      "name": "Führung",
+      "description": "Verstärkt nahestehende Einheiten"
+    },
+    "intimidate": {
+      "name": "Einschüchtern",
+      "description": "Reduziert Gegner-Angriff"
+    },
+    "splash_damage": {
+      "name": "Flächenschaden",
+      "description": "Trifft mehrere Einheiten"
+    },
+    "fire_breath": {
+      "name": "Feueratem",
+      "description": "Feuerschaden über Zeit"
+    },
+    "precision": {
+      "name": "Präzision",
+      "description": "Höhere Trefferchance"
+    },
+    "nature_magic": {
+      "name": "Naturmagie",
+      "description": "Kann Terrain manipulieren"
+    },
+    "rooted": {
+      "name": "Verwurzelt",
+      "description": "Kann nicht bewegt werden, aber sehr stark"
+    },
+    "nature_resistance": {
+      "name": "Naturresistenz",
+      "description": "Widerstand gegen Magie"
+    },
+    "magic_immunity": {
+      "name": "Magieimmunität",
+      "description": "Immun gegen magische Angriffe"
+    },
+    "reconnaissance": {
+      "name": "Aufklärung",
+      "description": "Große Sichtweite"
+    },
+    "elemental_magic": {
+      "name": "Elementarmagie",
+      "description": "Verschiedene magische Angriffe"
+    },
+    "multishot": {
+      "name": "Mehrfachschuss",
+      "description": "Kann mehrere Ziele treffen"
+    },
+    "forest_mastery": {
+      "name": "Waldmeisterschaft",
+      "description": "Bonus in Waldgebieten"
+    },
+    "rebirth": {
+      "name": "Wiedergeburt",
+      "description": "Kann einmal pro Spiel wiedergeboren werden"
+    },
+    "fire_damage": {
+      "name": "Feuerschaden",
+      "description": "Zusätzlicher Feuerschaden"
+    },
+    "ancient_power": {
+      "name": "Uralte Macht",
+      "description": "Wird stärker mit der Zeit"
+    },
+    "stone_skin": {
+      "name": "Steinhaut",
+      "description": "Sehr hohe Verteidigung"
+    },
+    "divine": {
+      "name": "Göttlich",
+      "description": "Heilige Kräfte"
+    },
+    "buff": {
+      "name": "Verstärken",
+      "description": "Kann Verbündete stärken"
     }
   }
 }
