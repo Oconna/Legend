@@ -1,537 +1,386 @@
-// server.js - Erweiterte Kartengenerierung mit Synchronisation
-// Fügen Sie diese Klasse zu Ihrem server.js hinzu:
+// ServerMapGenerator.js - Server-seitige Kartengenerierung
+
+console.log('🗺️ Initialisiere Server Map Generator...');
 
 class ServerMapGenerator {
     constructor() {
-        this.terrainTypes = ['grass', 'forest', 'mountain', 'water', 'swamp'];
-        this.buildingTypes = ['city', 'castle'];
+        this.terrainTypes = [
+            { id: "grassland", name: "Grasland", color: "#90EE90", movementCost: 1, defenseBonus: 0, goldBonus: 0, probability: 0.3 },
+            { id: "forest", name: "Wald", color: "#228B22", movementCost: 2, defenseBonus: 1, goldBonus: 0, probability: 0.2 },
+            { id: "mountains", name: "Berge", color: "#A0522D", movementCost: 3, defenseBonus: 2, goldBonus: 1, probability: 0.15 },
+            { id: "hills", name: "Hügel", color: "#DEB887", movementCost: 2, defenseBonus: 1, goldBonus: 0, probability: 0.15 },
+            { id: "plains", name: "Ebene", color: "#FFFF99", movementCost: 1, defenseBonus: 0, goldBonus: 1, probability: 0.2 }
+        ];
+
+        this.buildingTypes = [
+            { id: "city", name: "Stadt", hp: 100, goldIncome: 20, canTrain: true, probability: 0.4 },
+            { id: "castle", name: "Burg", hp: 150, goldIncome: 15, canTrain: true, defensiveBonus: 3, probability: 0.3 },
+            { id: "village", name: "Dorf", hp: 50, goldIncome: 10, canTrain: false, probability: 0.3 }
+        ];
+
+        this.generatedMaps = new Map(); // Cache für generierte Karten
     }
 
-    // Hauptfunktion für Kartengenerierung
-    generateSynchronizedMap(gameId, mapSize, playerCount) {
-        console.log(`🗺️ Generiere synchronisierte Karte für Spiel ${gameId}: ${mapSize}x${mapSize}`);
+    // ========================================
+    // HAUPTMETHODE: KARTENGENERIERUNG
+    // ========================================
+
+    generateSynchronizedMap(gameId, mapSize = 20, seed = null, players = []) {
+        console.log(`🗺️ Generiere synchronisierte Karte für Spiel ${gameId}...`);
         
-        // Verwende Game-ID als Seed für konsistente Generierung
-        const seed = this.createSeed(gameId);
-        const random = this.seededRandom(seed);
-        
-        // Initialisiere leere Karte
-        const map = this.initializeEmptyMap(mapSize);
-        
-        // Generiere Terrain-Features in mehreren Phasen
-        this.generateBaseTerrain(map, mapSize, random);
-        this.generateWaterBodies(map, mapSize, random);
-        this.generateMountainRanges(map, mapSize, random);
-        this.generateForestPatches(map, mapSize, random);
-        this.generateSwampAreas(map, mapSize, random);
-        this.generateBuildings(map, mapSize, playerCount, random);
-        this.smoothTerrain(map, mapSize, random);
-        this.ensureConnectivity(map, mapSize);
-        
-        // Validiere Karte
-        const validation = this.validateMap(map, mapSize, playerCount);
-        if (!validation.valid) {
-            console.warn('⚠️ Karte invalid, regeneriere...', validation.issues);
-            return this.generateSynchronizedMap(gameId, mapSize, playerCount);
+        try {
+            // Verwende gameId als Seed für Determinismus
+            const mapSeed = seed || this.generateSeedFromGameId(gameId);
+            
+            // Generiere Basis-Karte
+            const map = this.generateBaseMap(mapSize, mapSeed);
+            
+            // Platziere Gebäude
+            this.placeBuildingsOnMap(map, mapSize, mapSeed, players.length);
+            
+            // Generiere Startpositionen für Spieler
+            this.generateStartingPositions(map, mapSize, players, mapSeed);
+            
+            // Cache die Karte
+            this.generatedMaps.set(gameId, {
+                map: map,
+                seed: mapSeed,
+                size: mapSize,
+                generatedAt: Date.now()
+            });
+            
+            console.log(`✅ Karte für Spiel ${gameId} erfolgreich generiert (Seed: ${mapSeed})`);
+            
+            return {
+                success: true,
+                map: map,
+                seed: mapSeed,
+                size: mapSize,
+                gameId: gameId
+            };
+            
+        } catch (error) {
+            console.error(`❌ Fehler bei Kartengenerierung für Spiel ${gameId}:`, error);
+            return {
+                success: false,
+                error: error.message,
+                gameId: gameId
+            };
         }
+    }
+
+    // ========================================
+    // BASIS-KARTENGENERIERUNG
+    // ========================================
+
+    generateBaseMap(size, seed) {
+        console.log(`🗺️ Generiere Basis-Karte (${size}x${size}, Seed: ${seed})`);
         
-        console.log(`✅ Synchronisierte Karte generiert für ${gameId}`);
-        return {
-            mapData: map,
-            mapSize: mapSize,
-            seed: seed,
-            generatedAt: new Date(),
-            validation: validation
-        };
-    }
-
-    // Seed-Generierung basierend auf Game-ID
-    createSeed(gameId) {
-        let hash = 0;
-        for (let i = 0; i < gameId.length; i++) {
-            const char = gameId.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Konvertierung zu 32-Bit Integer
-        }
-        return Math.abs(hash);
-    }
-
-    // Seeded Random Number Generator für konsistente Ergebnisse
-    seededRandom(seed) {
-        let value = seed;
-        return function() {
-            value = (value * 9301 + 49297) % 233280;
-            return value / 233280;
-        };
-    }
-
-    // Initialisiere leere Karte
-    initializeEmptyMap(size) {
         const map = [];
+        
         for (let y = 0; y < size; y++) {
             map[y] = [];
             for (let x = 0; x < size; x++) {
-                map[y][x] = {
-                    terrain: 'grass',
-                    unit: null,
-                    owner: null,
-                    resources: null,
-                    elevation: 0,
-                    moisture: 0.5
-                };
+                map[y][x] = this.generateTile(x, y, size, seed);
             }
         }
+        
+        // Nachbearbeitung für realistische Terrain-Cluster
+        this.smoothTerrain(map, size, seed);
+        
         return map;
     }
 
-    // Generiere Basis-Terrain mit Noise
-    generateBaseTerrain(map, size, random) {
-        // Erstelle Höhen- und Feuchtigkeitskarten
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                // Verwende Perlin-Noise-ähnlichen Algorithmus
-                const elevation = this.generateNoise(x, y, size, random, 0.1);
-                const moisture = this.generateNoise(x, y, size, random, 0.15, 1000);
-                
-                map[y][x].elevation = elevation;
-                map[y][x].moisture = moisture;
-                
-                // Setze Basis-Terrain basierend auf Elevation/Moisture
-                if (elevation > 0.7) {
-                    map[y][x].terrain = 'mountain';
-                } else if (elevation < 0.3 && moisture > 0.6) {
-                    map[y][x].terrain = 'swamp';
-                } else if (moisture > 0.7) {
-                    map[y][x].terrain = 'forest';
-                } else {
-                    map[y][x].terrain = 'grass';
+    generateTile(x, y, mapSize, seed) {
+        // Seeded Random für Determinismus
+        const random = this.seededRandom(x + y * 1000 + seed * 10000);
+        
+        // Terrain-Auswahl basierend auf Position und Noise
+        const terrain = this.selectTerrain(x, y, mapSize, random);
+        
+        return {
+            x: x,
+            y: y,
+            terrain: terrain,
+            unit: null,
+            building: null,
+            owner: null,
+            explored: false,
+            visible: true
+        };
+    }
+
+    selectTerrain(x, y, mapSize, random) {
+        const centerX = mapSize / 2;
+        const centerY = mapSize / 2;
+        const distanceFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        const maxDistance = Math.sqrt(centerX ** 2 + centerY ** 2);
+        const normalizedDistance = distanceFromCenter / maxDistance;
+        
+        // Terrain-Wahrscheinlichkeiten basierend auf Position
+        let terrainProbabilities = [...this.terrainTypes];
+        
+        // Berge eher am Rand
+        if (normalizedDistance > 0.6) {
+            const mountainIndex = terrainProbabilities.findIndex(t => t.id === 'mountains');
+            if (mountainIndex >= 0) {
+                terrainProbabilities[mountainIndex].probability *= 2;
+            }
+        }
+        
+        // Ebenen eher in der Mitte
+        if (normalizedDistance < 0.4) {
+            const plainsIndex = terrainProbabilities.findIndex(t => t.id === 'plains');
+            if (plainsIndex >= 0) {
+                terrainProbabilities[plainsIndex].probability *= 1.5;
+            }
+        }
+        
+        // Weighted Selection
+        const totalProbability = terrainProbabilities.reduce((sum, t) => sum + t.probability, 0);
+        let normalizedRandom = random * totalProbability;
+        
+        for (const terrain of terrainProbabilities) {
+            normalizedRandom -= terrain.probability;
+            if (normalizedRandom <= 0) {
+                return { ...terrain }; // Kopie zurückgeben
+            }
+        }
+        
+        // Fallback
+        return { ...this.terrainTypes[0] };
+    }
+
+    smoothTerrain(map, size, seed) {
+        console.log('🌍 Glätte Terrain für realistische Cluster...');
+        
+        // Mehrere Durchgänge für natürlichere Terrain-Verteilung
+        for (let pass = 0; pass < 3; pass++) {
+            const newMap = JSON.parse(JSON.stringify(map)); // Deep copy
+            
+            for (let y = 1; y < size - 1; y++) {
+                for (let x = 1; x < size - 1; x++) {
+                    const neighbors = this.getNeighbors(map, x, y);
+                    const dominantTerrain = this.findDominantTerrain(neighbors);
+                    
+                    // 30% Chance, das Terrain dem dominanten Nachbarn anzupassen
+                    if (dominantTerrain && this.seededRandom(x + y * size + pass * 10000 + seed) < 0.3) {
+                        newMap[y][x].terrain = { ...dominantTerrain };
+                    }
+                }
+            }
+            
+            // Aktualisiere Map für nächsten Durchgang
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    map[y][x] = newMap[y][x];
                 }
             }
         }
     }
 
-    // Einfacher Noise-Generator
-    generateNoise(x, y, size, random, frequency, offset = 0) {
-        const scale = size * frequency;
-        const scaledX = (x + offset) / scale;
-        const scaledY = (y + offset) / scale;
+    getNeighbors(map, x, y) {
+        const neighbors = [];
+        const directions = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
         
-        // Einfache Interpolation zwischen zufälligen Werten
-        const x1 = Math.floor(scaledX);
-        const y1 = Math.floor(scaledY);
-        const x2 = x1 + 1;
-        const y2 = y1 + 1;
-        
-        const fx = scaledX - x1;
-        const fy = scaledY - y1;
-        
-        // Generiere Eckwerte
-        const corner1 = this.pseudoRandom(x1, y1, random);
-        const corner2 = this.pseudoRandom(x2, y1, random);
-        const corner3 = this.pseudoRandom(x1, y2, random);
-        const corner4 = this.pseudoRandom(x2, y2, random);
-        
-        // Bilineare Interpolation
-        const i1 = this.interpolate(corner1, corner2, fx);
-        const i2 = this.interpolate(corner3, corner4, fx);
-        return this.interpolate(i1, i2, fy);
-    }
-
-    pseudoRandom(x, y, random) {
-        // Pseudo-zufälliger Wert basierend auf Koordinaten
-        const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-        return (n - Math.floor(n)) * 0.5 + 0.25;
-    }
-
-    interpolate(a, b, t) {
-        return a * (1 - t) + b * t;
-    }
-
-    // Generiere Wasserkörper
-    generateWaterBodies(map, size, random) {
-        const waterBodies = Math.max(2, Math.floor(size / 15));
-        
-        for (let i = 0; i < waterBodies; i++) {
-            const centerX = Math.floor(random() * size);
-            const centerY = Math.floor(random() * size);
-            const maxRadius = 3 + Math.floor(random() * (size / 10));
+        for (const [dx, dy] of directions) {
+            const nx = x + dx;
+            const ny = y + dy;
             
-            this.generateCircularFeature(map, size, centerX, centerY, maxRadius, 'water', 0.8, random);
+            if (nx >= 0 && nx < map[0].length && ny >= 0 && ny < map.length) {
+                neighbors.push(map[ny][nx]);
+            }
         }
+        
+        return neighbors;
     }
 
-    // Generiere Gebirgsketten
-    generateMountainRanges(map, size, random) {
-        const ranges = Math.max(1, Math.floor(size / 20));
+    findDominantTerrain(neighbors) {
+        const terrainCounts = {};
         
-        for (let i = 0; i < ranges; i++) {
-            const startX = Math.floor(random() * size);
-            const startY = Math.floor(random() * size);
-            const length = 8 + Math.floor(random() * (size / 5));
-            
-            this.generateLinearFeature(map, size, startX, startY, length, 'mountain', 0.7, random);
+        for (const neighbor of neighbors) {
+            const terrainId = neighbor.terrain.id;
+            terrainCounts[terrainId] = (terrainCounts[terrainId] || 0) + 1;
         }
-    }
-
-    // Generiere Waldgebiete
-    generateForestPatches(map, size, random) {
-        const patches = Math.max(3, Math.floor(size / 8));
         
-        for (let i = 0; i < patches; i++) {
-            const centerX = Math.floor(random() * size);
-            const centerY = Math.floor(random() * size);
-            const radius = 4 + Math.floor(random() * 6);
-            
-            this.generateCircularFeature(map, size, centerX, centerY, radius, 'forest', 0.6, random);
+        let maxCount = 0;
+        let dominantTerrain = null;
+        
+        for (const [terrainId, count] of Object.entries(terrainCounts)) {
+            if (count > maxCount) {
+                maxCount = count;
+                dominantTerrain = this.terrainTypes.find(t => t.id === terrainId);
+            }
         }
+        
+        return maxCount >= 3 ? dominantTerrain : null;
     }
 
-    // Generiere Sumpfgebiete
-    generateSwampAreas(map, size, random) {
-        const swamps = Math.max(1, Math.floor(size / 25));
+    // ========================================
+    // GEBÄUDE-PLATZIERUNG
+    // ========================================
+
+    placeBuildingsOnMap(map, mapSize, seed, playerCount = 4) {
+        console.log(`🏘️ Platziere Gebäude auf der Karte...`);
         
-        for (let i = 0; i < swamps; i++) {
-            const centerX = Math.floor(random() * size);
-            const centerY = Math.floor(random() * size);
-            const radius = 2 + Math.floor(random() * 4);
-            
-            this.generateCircularFeature(map, size, centerX, centerY, radius, 'swamp', 0.5, random);
-        }
+        // Berechne Anzahl der Gebäude basierend auf Kartengröße
+        const totalTiles = mapSize * mapSize;
+        const buildingDensity = 0.025; // 2.5% der Felder haben Gebäude
+        const totalBuildings = Math.floor(totalTiles * buildingDensity);
+        
+        // Stelle sicher, dass genug Hauptgebäude für Spieler vorhanden sind
+        const mainBuildings = Math.max(playerCount + 2, Math.floor(totalBuildings * 0.4));
+        const otherBuildings = totalBuildings - mainBuildings;
+        
+        console.log(`  Platziere ${mainBuildings} Hauptgebäude und ${otherBuildings} weitere Gebäude`);
+        
+        // Platziere Hauptgebäude (Städte und Burgen)
+        this.placeMainBuildings(map, mapSize, mainBuildings, seed);
+        
+        // Platziere andere Gebäude
+        this.placeOtherBuildings(map, mapSize, otherBuildings, seed);
+        
+        console.log('✅ Gebäude-Platzierung abgeschlossen');
     }
 
-    // Generiere Gebäude (Städte und Burgen)
-    generateBuildings(map, size, playerCount, random) {
-        // Anzahl Gebäude basierend auf Kartengröße und Spieleranzahl
-        const citiesPerPlayer = Math.max(1, Math.floor(size / 20));
-        const totalCities = playerCount * citiesPerPlayer;
-        const totalCastles = Math.max(playerCount, Math.floor(totalCities / 3));
-        
-        console.log(`🏰 Generiere ${totalCities} Städte und ${totalCastles} Burgen`);
-        
-        // Platziere Städte
-        this.placeBuildingsWithSpacing(map, size, 'city', totalCities, random, 5);
-        
-        // Platziere Burgen
-        this.placeBuildingsWithSpacing(map, size, 'castle', totalCastles, random, 8);
-    }
-
-    // Platziere Gebäude mit Mindestabstand
-    placeBuildingsWithSpacing(map, size, buildingType, count, random, minSpacing) {
-        const placed = [];
+    placeMainBuildings(map, mapSize, count, seed) {
+        const mainBuildingTypes = this.buildingTypes.filter(b => b.id === 'city' || b.id === 'castle');
+        let placed = 0;
         let attempts = 0;
-        const maxAttempts = size * size;
+        const maxAttempts = count * 10;
         
-        while (placed.length < count && attempts < maxAttempts) {
-            const x = Math.floor(random() * size);
-            const y = Math.floor(random() * size);
+        while (placed < count && attempts < maxAttempts) {
+            const x = Math.floor(this.seededRandom(seed + attempts * 2) * mapSize);
+            const y = Math.floor(this.seededRandom(seed + attempts * 2 + 1) * mapSize);
             
-            // Prüfe ob Position gültig ist
-            if (this.isValidBuildingPosition(map, size, x, y, placed, minSpacing)) {
-                map[y][x].terrain = buildingType;
-                placed.push({ x, y, type: buildingType });
-                console.log(`🏘️ ${buildingType} platziert bei (${x}, ${y})`);
+            if (this.isSuitableForBuilding(map, x, y, mapSize, true)) {
+                const buildingType = mainBuildingTypes[Math.floor(this.seededRandom(seed + attempts * 3) * mainBuildingTypes.length)];
+                
+                map[y][x].building = {
+                    type: buildingType.id,
+                    name: buildingType.name,
+                    hp: buildingType.hp,
+                    maxHp: buildingType.hp,
+                    goldIncome: buildingType.goldIncome,
+                    canTrain: buildingType.canTrain,
+                    owner: null
+                };
+                
+                placed++;
             }
             
             attempts++;
         }
         
-        if (placed.length < count) {
-            console.warn(`⚠️ Nur ${placed.length}/${count} ${buildingType} platziert nach ${attempts} Versuchen`);
-        }
+        console.log(`  ${placed}/${count} Hauptgebäude platziert`);
     }
 
-    // Prüfe ob Position für Gebäude geeignet ist
-    isValidBuildingPosition(map, size, x, y, existingBuildings, minSpacing) {
-        // Prüfe Kartengrenzen
-        if (x < 1 || x >= size - 1 || y < 1 || y >= size - 1) return false;
+    placeOtherBuildings(map, mapSize, count, seed) {
+        const otherBuildingTypes = this.buildingTypes.filter(b => b.id !== 'city' && b.id !== 'castle');
+        let placed = 0;
+        let attempts = 0;
+        const maxAttempts = count * 10;
         
-        // Prüfe ob Terrain geeignet ist (nicht Wasser/Berg)
-        const terrain = map[y][x].terrain;
-        if (terrain === 'water' || terrain === 'mountain') return false;
-        
-        // Prüfe Mindestabstand zu anderen Gebäuden
-        for (const building of existingBuildings) {
-            const distance = Math.sqrt(
-                Math.pow(x - building.x, 2) + Math.pow(y - building.y, 2)
-            );
-            if (distance < minSpacing) return false;
-        }
-        
-        return true;
-    }
-
-    // Generiere kreisförmige Features
-    generateCircularFeature(map, size, centerX, centerY, maxRadius, terrainType, density, random) {
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                const distance = Math.sqrt(
-                    Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)
-                );
-                
-                if (distance <= maxRadius) {
-                    const probability = density * (1 - distance / maxRadius);
-                    if (random() < probability) {
-                        map[y][x].terrain = terrainType;
-                    }
-                }
-            }
-        }
-    }
-
-    // Generiere lineare Features (Gebirgsketten)
-    generateLinearFeature(map, size, startX, startY, length, terrainType, density, random) {
-        const angle = random() * Math.PI * 2;
-        const deltaX = Math.cos(angle);
-        const deltaY = Math.sin(angle);
-        
-        for (let i = 0; i < length; i++) {
-            const x = Math.round(startX + deltaX * i);
-            const y = Math.round(startY + deltaY * i);
+        while (placed < count && attempts < maxAttempts) {
+            const x = Math.floor(this.seededRandom(seed + 10000 + attempts * 2) * mapSize);
+            const y = Math.floor(this.seededRandom(seed + 10000 + attempts * 2 + 1) * mapSize);
             
-            if (x >= 0 && x < size && y >= 0 && y < size) {
-                if (random() < density) {
-                    map[y][x].terrain = terrainType;
+            if (this.isSuitableForBuilding(map, x, y, mapSize, false)) {
+                const buildingType = otherBuildingTypes[Math.floor(this.seededRandom(seed + 10000 + attempts * 3) * otherBuildingTypes.length)];
+                
+                map[y][x].building = {
+                    type: buildingType.id,
+                    name: buildingType.name,
+                    hp: buildingType.hp || 50,
+                    maxHp: buildingType.hp || 50,
+                    goldIncome: buildingType.goldIncome || 5,
+                    canTrain: buildingType.canTrain || false,
+                    owner: null
+                };
+                
+                placed++;
+            }
+            
+            attempts++;
+        }
+        
+        console.log(`  ${placed}/${count} weitere Gebäude platziert`);
+    }
+
+    isSuitableForBuilding(map, x, y, mapSize, isMainBuilding = false) {
+        // Bounds check
+        if (x < 0 || x >= mapSize || y < 0 || y >= mapSize) {
+            return false;
+        }
+        
+        const tile = map[y][x];
+        
+        // Schon ein Gebäude vorhanden
+        if (tile.building) {
+            return false;
+        }
+        
+        // Ungeeignetes Terrain
+        if (tile.terrain.id === 'water' || tile.terrain.id === 'mountains') {
+            return false;
+        }
+        
+        // Für Hauptgebäude: Mindestabstand zu anderen Gebäuden
+        if (isMainBuilding) {
+            const minDistance = 3;
+            
+            for (let dy = -minDistance; dy <= minDistance; dy++) {
+                for (let dx = -minDistance; dx <= minDistance; dx++) {
+                    const nx = x + dx;
+                    const ny = y + dy;
                     
-                    // Füge Breiten-Variation hinzu
-                    for (let dy = -1; dy <= 1; dy++) {
-                        for (let dx = -1; dx <= 1; dx++) {
-                            const varX = x + dx;
-                            const varY = y + dy;
-                            
-                            if (varX >= 0 && varX < size && varY >= 0 && varY < size) {
-                                if (random() < density * 0.4) {
-                                    map[varY][varX].terrain = terrainType;
-                                }
-                            }
+                    if (nx >= 0 && nx < mapSize && ny >= 0 && ny < mapSize) {
+                        if (map[ny][nx].building) {
+                            return false;
                         }
                     }
                 }
             }
         }
+        
+        return true;
     }
 
-    // Glätte Terrain für natürlicheres Aussehen
-    smoothTerrain(map, size, random) {
-        const tempMap = JSON.parse(JSON.stringify(map));
+    // ========================================
+    // STARTPOSITIONEN FÜR SPIELER
+    // ========================================
+
+    generateStartingPositions(map, mapSize, players, seed) {
+        console.log(`🏠 Generiere Startpositionen für ${players.length} Spieler...`);
         
-        for (let y = 1; y < size - 1; y++) {
-            for (let x = 1; x < size - 1; x++) {
-                // Nur bei niedriger Wahrscheinlichkeit glätten
-                if (random() > 0.1) continue;
+        if (players.length === 0) {
+            console.log('  Keine Spieler vorhanden, überspringe Startpositionen');
+            return;
+        }
+        
+        // Finde alle verfügbaren Gebäude
+        const availableBuildings = this.findAllBuildings(map, 'city', 'castle');
+        
+        if (availableBuildings.length < players.length) {
+            console.warn(`⚠️ Nicht genug Gebäude für alle Spieler (${availableBuildings.length} < ${players.length})`);
+        }
+        
+        // Shuffle buildings für faire Verteilung
+        this.shuffleArray(availableBuildings, seed);
+        
+        // Weise jedem Spieler ein Gebäude zu
+        for (let i = 0; i < players.length && i < availableBuildings.length; i++) {
+            const player = players[i];
+            const building = availableBuildings[i];
+            
+            // Setze Spieler als Besitzer
+            map[building.y][building.x].owner = player.id;
+            map[building.y][building.x].building.owner = player.id;
+            
+            // Erstelle Starteinheit neben dem Gebäude
+            const unitPosition = this.findNearbyEmptyTile(map, building.x, building.y, mapSize);
+            if (unitPosition) {
+                const startingUnit = this.createStartingUnit(player, seed + i);
+                map[unitPosition.y][unitPosition.x].unit = startingUnit;
                 
-                const terrainCounts = {};
-                
-                // Zähle umgebende Terrain-Typen
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        const terrain = map[y + dy][x + dx].terrain;
-                        terrainCounts[terrain] = (terrainCounts[terrain] || 0) + 1;
-                    }
-                }
-                
-                // Finde häufigsten Terrain-Typ
-                const mostCommon = Object.keys(terrainCounts).reduce((a, b) =>
-                    terrainCounts[a] > terrainCounts[b] ? a : b
-                );
-                
-                // Glätte nur wenn deutliche Mehrheit vorhanden
-                if (terrainCounts[mostCommon] >= 6) {
-                    tempMap[y][x].terrain = mostCommon;
-                }
-            }
-        }
-        
-        // Kopiere geglättete Werte zurück
-        for (let y = 1; y < size - 1; y++) {
-            for (let x = 1; x < size - 1; x++) {
-                map[y][x].terrain = tempMap[y][x].terrain;
-            }
-        }
-    }
-
-    // Stelle sicher, dass alle Landgebiete verbunden sind
-    ensureConnectivity(map, size) {
-        // Einfache Connectivity-Prüfung und -Korrektur
-        // Finde alle Landgebiete und verbinde isolierte Inseln
-        
-        const visited = new Set();
-        const landTiles = [];
-        
-        // Sammle alle Landfelder
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                if (map[y][x].terrain !== 'water') {
-                    landTiles.push({ x, y });
-                }
-            }
-        }
-        
-        if (landTiles.length === 0) return;
-        
-        // Finde größte zusammenhängende Landmasse
-        const mainLand = this.findLargestLandmass(map, size, landTiles);
-        
-        // Verbinde isolierte Gebiete mit Hauptlandmasse
-        this.connectIsolatedAreas(map, size, mainLand, landTiles);
-    }
-
-    findLargestLandmass(map, size, landTiles) {
-        const visited = new Set();
-        let largestGroup = [];
-        
-        for (const tile of landTiles) {
-            const key = `${tile.x},${tile.y}`;
-            if (visited.has(key)) continue;
-            
-            const group = this.floodFill(map, size, tile.x, tile.y, visited);
-            if (group.length > largestGroup.length) {
-                largestGroup = group;
-            }
-        }
-        
-        return largestGroup;
-    }
-
-    floodFill(map, size, startX, startY, visited) {
-        const group = [];
-        const stack = [{ x: startX, y: startY }];
-        
-        while (stack.length > 0) {
-            const { x, y } = stack.pop();
-            const key = `${x},${y}`;
-            
-            if (visited.has(key)) continue;
-            if (x < 0 || x >= size || y < 0 || y >= size) continue;
-            if (map[y][x].terrain === 'water') continue;
-            
-            visited.add(key);
-            group.push({ x, y });
-            
-            // Füge Nachbarn hinzu
-            stack.push({ x: x + 1, y });
-            stack.push({ x: x - 1, y });
-            stack.push({ x, y: y + 1 });
-            stack.push({ x, y: y - 1 });
-        }
-        
-        return group;
-    }
-
-    connectIsolatedAreas(map, size, mainLand, allLandTiles) {
-        // Vereinfachte Verbindung: Wandle einige Wasserfelder in Grasland um
-        const mainLandSet = new Set(mainLand.map(t => `${t.x},${t.y}`));
-        
-        for (const tile of allLandTiles) {
-            const key = `${tile.x},${tile.y}`;
-            if (mainLandSet.has(key)) continue;
-            
-            // Finde nächsten Punkt zur Hauptlandmasse
-            const nearest = this.findNearestMainLandTile(tile, mainLand);
-            if (nearest && this.getDistance(tile, nearest) <= 3) {
-                // Erstelle einfache Verbindung
-                this.createSimplePath(map, size, tile, nearest);
-            }
-        }
-    }
-
-    findNearestMainLandTile(tile, mainLand) {
-        let nearest = null;
-        let minDistance = Infinity;
-        
-        for (const landTile of mainLand) {
-            const distance = this.getDistance(tile, landTile);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearest = landTile;
-            }
-        }
-        
-        return nearest;
-    }
-
-    getDistance(tile1, tile2) {
-        return Math.sqrt(
-            Math.pow(tile1.x - tile2.x, 2) + Math.pow(tile1.y - tile2.y, 2)
-        );
-    }
-
-    createSimplePath(map, size, from, to) {
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
-        
-        for (let i = 0; i <= steps; i++) {
-            const x = Math.round(from.x + (dx * i) / steps);
-            const y = Math.round(from.y + (dy * i) / steps);
-            
-            if (x >= 0 && x < size && y >= 0 && y < size) {
-                if (map[y][x].terrain === 'water') {
-                    map[y][x].terrain = 'grass';
-                }
-            }
-        }
-    }
-
-    // Validiere generierte Karte
-    validateMap(map, size, playerCount) {
-        const issues = [];
-        const stats = this.calculateMapStats(map, size);
-        
-        // Prüfe Minimum-Anforderungen
-        if (stats.cities < playerCount) {
-            issues.push(`Zu wenige Städte: ${stats.cities} < ${playerCount}`);
-        }
-        
-        if (stats.castles < Math.ceil(playerCount / 2)) {
-            issues.push(`Zu wenige Burgen: ${stats.castles} < ${Math.ceil(playerCount / 2)}`);
-        }
-        
-        if (stats.landPercentage < 0.6) {
-            issues.push(`Zu wenig Land: ${(stats.landPercentage * 100).toFixed(1)}% < 60%`);
-        }
-        
-        if (stats.waterPercentage > 0.4) {
-            issues.push(`Zu viel Wasser: ${(stats.waterPercentage * 100).toFixed(1)}% > 40%`);
-        }
-        
-        return {
-            valid: issues.length === 0,
-            issues: issues,
-            stats: stats
-        };
-    }
-
-    calculateMapStats(map, size) {
-        const stats = {
-            totalTiles: size * size,
-            terrainCounts: {},
-            cities: 0,
-            castles: 0,
-            landPercentage: 0,
-            waterPercentage: 0
-        };
-        
-        // Zähle Terrain-Typen
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                const terrain = map[y][x].terrain;
-                stats.terrainCounts[terrain] = (stats.terrainCounts[terrain] || 0) + 1;
-                
-                if (terrain === 'city') stats.cities++;
-                if (terrain === 'castle') stats.castles++;
-            }
-        }
-        
-        // Berechne Prozentsätze
-        const waterTiles = stats.terrainCounts.water || 0;
-        const landTiles = stats.totalTiles - waterTiles;
-        
-        stats.waterPercentage = waterTiles / stats.totalTiles;
-        stats.landPercentage = landTiles / stats.totalTiles;
-        
-        return stats;
-    }
-}
-
-// Export the class
-module.exports = ServerMapGenerator;
+                console.log
