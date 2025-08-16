@@ -230,12 +230,24 @@
                 font-size: 2em;
             }
         }
+
+        .error-display {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="connection-status disconnected" id="connectionStatus">
         Verbindung wird hergestellt...
     </div>
+
+    <div id="errorDisplay" class="error-display"></div>
 
     <div class="container">
         <div class="header">
@@ -250,12 +262,12 @@
                 
                 <div class="input-group">
                     <label for="playerName">Dein Name:</label>
-                    <input type="text" id="playerName" placeholder="Spielername eingeben">
+                    <input type="text" id="playerName" placeholder="Spielername eingeben" maxlength="20">
                 </div>
 
                 <div class="input-group">
                     <label for="gameName">Spielname:</label>
-                    <input type="text" id="gameName" placeholder="Name für das Spiel">
+                    <input type="text" id="gameName" placeholder="Name für das Spiel" maxlength="30">
                 </div>
 
                 <div class="input-group">
@@ -281,7 +293,7 @@
                     </select>
                 </div>
 
-                <button class="btn" onclick="createGame()">🎮 Spiel erstellen</button>
+                <button class="btn" id="createGameBtn">🎮 Spiel erstellen</button>
             </div>
 
             <!-- Verfügbare Spiele -->
@@ -290,7 +302,7 @@
                 <div class="game-list" id="gameList">
                     <p style="text-align: center; opacity: 0.7;">Lädt Spiele...</p>
                 </div>
-                <button class="btn btn-secondary" onclick="refreshGames()">🔄 Aktualisieren</button>
+                <button class="btn btn-secondary" id="refreshGamesBtn">🔄 Aktualisieren</button>
             </div>
         </div>
 
@@ -308,7 +320,7 @@
                     <h4 style="margin-bottom: 10px; font-size: 1em; color: #f39c12;">👑 Host-Einstellungen:</h4>
                     <div class="input-group" style="margin-bottom: 10px;">
                         <label for="hostMapSize" style="font-size: 12px;">Kartengröße:</label>
-                        <select id="hostMapSize" onchange="lobby.updateGameSettings()" style="width: 100%; padding: 6px; font-size: 12px;">
+                        <select id="hostMapSize" style="width: 100%; padding: 6px; font-size: 12px;">
                             <option value="20">Klein (20x20)</option>
                             <option value="30" selected>Mittel (30x30)</option>
                             <option value="50">Groß (50x50)</option>
@@ -323,30 +335,71 @@
             </div>
 
             <div class="game-controls">
-                <button class="btn" id="readyBtn" onclick="toggleReady()">✅ Bereit</button>
-                <button class="btn btn-secondary" onclick="leaveGame()">🚪 Spiel verlassen</button>
-                <button class="btn" id="startGameBtn" onclick="startGame()" style="display: none;">🚀 Spiel starten</button>
+                <button class="btn" id="readyBtn">✅ Bereit</button>
+                <button class="btn btn-secondary" id="leaveGameBtn">🚪 Spiel verlassen</button>
+                <button class="btn" id="startGameBtn" style="display: none;">🚀 Spiel starten</button>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript Dependencies in korrekter Reihenfolge -->
+    <!-- JavaScript Dependencies -->
     <script src="/socket.io/socket.io.js"></script>
 
-    <!-- 1. Konfiguration und Utilities zuerst -->
-    <script src="/js/game-config.js"></script>
-    <script src="/js/game-utils.js"></script>
-
-    <!-- 2. State-Manager -->
-    <script src="/js/game-state.js"></script>
-
-    <!-- 3. Lobby-spezifische Module -->
-    <script src="/js/socket-manager.js"></script>
-    <script src="/js/races.js"></script>
-
-    <!-- 4. Lobby-Logik -->
     <script>
-        class MultiplayerLobby {
+        // Simple validation functions (fallback)
+        function isValidName(name) {
+            if (!name || typeof name !== 'string') return false;
+            const trimmed = name.trim();
+            return trimmed.length >= 2 && trimmed.length <= 20 && /^[a-zA-Z0-9\s_-]+$/.test(trimmed);
+        }
+
+        function isValidGameName(name) {
+            if (!name || typeof name !== 'string') return false;
+            const trimmed = name.trim();
+            return trimmed.length >= 3 && trimmed.length <= 30 && /^[a-zA-Z0-9\s_-]+$/.test(trimmed);
+        }
+
+        function sanitizeInput(input) {
+            if (typeof input !== 'string') return input;
+            return input.replace(/[<>'"]/g, '').trim().substring(0, 50);
+        }
+
+        function showError(message) {
+            const errorDisplay = document.getElementById('errorDisplay');
+            errorDisplay.textContent = message;
+            errorDisplay.style.display = 'block';
+            setTimeout(() => {
+                errorDisplay.style.display = 'none';
+            }, 5000);
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                background: rgba(76, 175, 80, 0.9);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                font-weight: bold;
+                z-index: 1000;
+                transform: translateX(100%);
+                transition: transform 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+            setTimeout(() => {
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Main Lobby Class
+        class SimpleLobby {
             constructor() {
                 this.socket = null;
                 this.currentPlayer = null;
@@ -355,6 +408,7 @@
                 this.isConnected = false;
                 
                 this.initSocket();
+                this.initEventListeners();
             }
 
             initSocket() {
@@ -365,11 +419,7 @@
                     console.log('✅ Socket.io initialisiert');
                 } catch (error) {
                     console.error('❌ Socket.io Fehler:', error);
-                    GameUtils.showErrorDialog({
-                        context: 'Socket Connection',
-                        message: 'Fehler beim Verbinden zum Server. Prüfen Sie ob der Server läuft.',
-                        error: error
-                    });
+                    showError('Fehler beim Verbinden zum Server. Prüfen Sie ob der Server läuft.');
                     return;
                 }
 
@@ -389,10 +439,7 @@
                 this.socket.on('connect_error', (error) => {
                     console.error('🔌 Verbindungsfehler:', error);
                     this.updateConnectionStatus(false);
-                });
-
-                this.socket.on('error', (error) => {
-                    console.error('⚠️ Socket Fehler:', error);
+                    showError('Verbindungsfehler: ' + error.message);
                 });
 
                 this.socket.on('games-list', (games) => {
@@ -410,9 +457,9 @@
                         this.updatePlayersGrid();
                         this.updateGameSettingsDisplay();
                         this.updateStartButton();
-                        this.showNotification('Spiel erfolgreich erstellt!');
+                        showNotification('Spiel erfolgreich erstellt!');
                     } else {
-                        alert('Fehler beim Erstellen: ' + data.error);
+                        showError('Fehler beim Erstellen: ' + data.error);
                     }
                 });
 
@@ -423,9 +470,9 @@
                         this.updatePlayersGrid();
                         this.updateGameSettingsDisplay();
                         this.updateStartButton();
-                        this.showNotification('Erfolgreich beigetreten!');
+                        showNotification('Erfolgreich beigetreten!');
                     } else {
-                        alert('Fehler beim Beitreten: ' + data.error);
+                        showError('Fehler beim Beitreten: ' + data.error);
                     }
                 });
 
@@ -433,7 +480,7 @@
                     this.currentGame = data.game;
                     this.updatePlayersGrid();
                     this.updateGameSettingsDisplay();
-                    this.showNotification(`${data.player.name} ist beigetreten!`);
+                    showNotification(`${data.player.name} ist beigetreten!`);
                 });
 
                 this.socket.on('player-left', (data) => {
@@ -441,7 +488,7 @@
                     this.updatePlayersGrid();
                     this.updateGameSettingsDisplay();
                     this.updateStartButton();
-                    this.showNotification(`${data.playerName} hat das Spiel verlassen`);
+                    showNotification(`${data.playerName} hat das Spiel verlassen`);
                 });
 
                 this.socket.on('player-ready-changed', (data) => {
@@ -450,7 +497,7 @@
                     this.updateStartButton();
                     
                     const status = data.player.ready ? 'bereit' : 'nicht bereit';
-                    this.showNotification(`${data.player.name} ist ${status}`);
+                    showNotification(`${data.player.name} ist ${status}`);
                 });
 
                 this.socket.on('game-left', (data) => {
@@ -458,7 +505,7 @@
                         this.currentGame = null;
                         this.isReady = false;
                         document.getElementById('playersSection').style.display = 'none';
-                        this.showNotification('Spiel verlassen');
+                        showNotification('Spiel verlassen');
                     }
                 });
 
@@ -478,14 +525,53 @@
                 });
 
                 this.socket.on('start-game-failed', (data) => {
-                    alert('Fehler: ' + data.error);
+                    showError('Fehler: ' + data.error);
                 });
 
                 this.socket.on('game-settings-updated', (data) => {
                     this.currentGame = data.game;
                     this.updateGameSettingsDisplay();
-                    this.showNotification('Spieleinstellungen geändert');
+                    showNotification('Spieleinstellungen geändert');
                 });
+            }
+
+            initEventListeners() {
+                // Button Event Listeners
+                document.getElementById('createGameBtn').addEventListener('click', () => this.createGame());
+                document.getElementById('refreshGamesBtn').addEventListener('click', () => this.refreshGames());
+                document.getElementById('readyBtn').addEventListener('click', () => this.toggleReady());
+                document.getElementById('leaveGameBtn').addEventListener('click', () => this.leaveGame());
+                document.getElementById('startGameBtn').addEventListener('click', () => this.startGame());
+                
+                // Host settings
+                const hostMapSize = document.getElementById('hostMapSize');
+                if (hostMapSize) {
+                    hostMapSize.addEventListener('change', () => this.updateGameSettings());
+                }
+
+                // Input validation
+                this.setupInputValidation();
+            }
+
+            setupInputValidation() {
+                const playerNameInput = document.getElementById('playerName');
+                const gameNameInput = document.getElementById('gameName');
+                
+                if (playerNameInput) {
+                    playerNameInput.addEventListener('input', (e) => {
+                        const value = e.target.value;
+                        const valid = isValidName(value);
+                        e.target.style.borderColor = valid ? '#27ae60' : '#e74c3c';
+                    });
+                }
+                
+                if (gameNameInput) {
+                    gameNameInput.addEventListener('input', (e) => {
+                        const value = e.target.value;
+                        const valid = isValidGameName(value);
+                        e.target.style.borderColor = valid ? '#27ae60' : '#e74c3c';
+                    });
+                }
             }
 
             updateConnectionStatus(connected) {
@@ -505,27 +591,18 @@
                 const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
                 const mapSize = parseInt(document.getElementById('mapSize').value);
 
-                // Fallback-Validierung falls GameUtils noch nicht geladen ist
-                const isValidPlayerName = GameUtils ? 
-                    GameUtils.isValidName(playerName) : 
-                    (playerName.length >= 2 && playerName.length <= 20 && /^[a-zA-Z0-9\s_-]+$/.test(playerName));
-                    
-                const isValidGameName = GameUtils ? 
-                    GameUtils.isValidGameName(gameName) : 
-                    (gameName.length >= 3 && gameName.length <= 30 && /^[a-zA-Z0-9\s_-]+$/.test(gameName));
-
-                if (!isValidPlayerName) {
-                    alert('Bitte gültigen Namen eingeben (2-20 Zeichen, nur Buchstaben, Zahlen, Leerzeichen, - und _)!');
+                if (!isValidName(playerName)) {
+                    showError('Bitte gültigen Namen eingeben (2-20 Zeichen, nur Buchstaben, Zahlen, Leerzeichen, - und _)!');
                     return;
                 }
 
-                if (!isValidGameName) {
-                    alert('Bitte gültigen Spielnamen eingeben (3-30 Zeichen)!');
+                if (!isValidGameName(gameName)) {
+                    showError('Bitte gültigen Spielnamen eingeben (3-30 Zeichen)!');
                     return;
                 }
 
                 if (!this.isConnected || !this.socket) {
-                    alert('Keine Verbindung zum Server! Bitte warten Sie oder laden Sie die Seite neu.');
+                    showError('Keine Verbindung zum Server! Bitte warten Sie oder laden Sie die Seite neu.');
                     return;
                 }
 
@@ -547,13 +624,8 @@
             joinGame(gameId) {
                 const playerName = document.getElementById('playerName').value.trim();
                 
-                // Fallback-Validierung
-                const isValidPlayerName = GameUtils ? 
-                    GameUtils.isValidName(playerName) : 
-                    (playerName.length >= 2 && playerName.length <= 20 && /^[a-zA-Z0-9\s_-]+$/.test(playerName));
-                    
-                if (!isValidPlayerName) {
-                    alert('Bitte erst einen gültigen Namen eingeben!');
+                if (!isValidName(playerName)) {
+                    showError('Bitte erst einen gültigen Namen eingeben!');
                     return;
                 }
 
@@ -586,7 +658,9 @@
             }
 
             refreshGames() {
-                this.socket.emit('request-games-list');
+                if (this.socket) {
+                    this.socket.emit('request-games-list');
+                }
             }
 
             updateGamesList(games) {
@@ -601,20 +675,10 @@
                 games.forEach(game => {
                     const gameItem = document.createElement('div');
                     gameItem.className = 'game-item';
-                    
-                    // Fallback für sanitizeUserInput
-                    const sanitize = (input) => {
-                        if (GameUtils && GameUtils.sanitizeUserInput) {
-                            return GameUtils.sanitizeUserInput(input);
-                        }
-                        // Einfache Fallback-Sanitization
-                        return String(input).replace(/[<>'"]/g, '').trim().substring(0, 50);
-                    };
-                    
                     gameItem.innerHTML = `
                         <div class="game-info">
-                            <h3>${sanitize(game.name)}</h3>
-                            <p>Host: ${sanitize(game.hostName)} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
+                            <h3>${sanitizeInput(game.name)}</h3>
+                            <p>Host: ${sanitizeInput(game.hostName)} | ${game.playerCount}/${game.maxPlayers} Spieler | ${this.getMapSizeText(game.settings?.mapSize || 30)}</p>
                         </div>
                         <button class="btn" onclick="lobby.joinGame('${game.id}')" 
                                 ${game.playerCount >= game.maxPlayers ? 'disabled' : ''}>
@@ -639,21 +703,9 @@
             updatePlayersGrid() {
                 if (!this.currentGame) return;
 
-            updatePlayersGrid() {
-                if (!this.currentGame) return;
-
                 const game = this.currentGame;
                 const playersGrid = document.getElementById('playersGrid');
                 playersGrid.innerHTML = '';
-
-                // Fallback für sanitizeUserInput
-                const sanitize = (input) => {
-                    if (GameUtils && GameUtils.sanitizeUserInput) {
-                        return GameUtils.sanitizeUserInput(input);
-                    }
-                    // Einfache Fallback-Sanitization
-                    return String(input).replace(/[<>'"]/g, '').trim().substring(0, 20);
-                };
 
                 for (let i = 0; i < game.maxPlayers; i++) {
                     const player = game.players[i];
@@ -663,7 +715,7 @@
                         const isCurrentPlayer = player.name === this.currentPlayer?.name;
                         slot.className = `player-slot occupied ${player.ready ? 'ready' : ''}`;
                         slot.innerHTML = `
-                            <div>👤 ${sanitize(player.name)} ${isCurrentPlayer ? '(Du)' : ''}</div>
+                            <div>👤 ${sanitizeInput(player.name)} ${isCurrentPlayer ? '(Du)' : ''}</div>
                             <div style="margin-top: 10px;">
                                 <span class="status-indicator ${player.ready ? 'status-ready' : 'status-waiting'}"></span>
                                 ${player.ready ? 'Bereit ✅' : 'Wartet... ⏳'}
@@ -708,7 +760,6 @@
                 
                 if (!game || !settingsDisplay) return;
 
-                // Zeige aktuelle Einstellungen
                 const mapSizeText = this.getMapSizeText(game.settings?.mapSize || 30);
                 settingsDisplay.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
@@ -719,7 +770,6 @@
                     </div>
                 `;
 
-                // Zeige Host-Controls nur für Host
                 if (hostControls) {
                     const isHost = game.hostName === this.currentPlayer?.name;
                     if (isHost) {
@@ -741,11 +791,10 @@
                 const isHost = game.hostName === this.currentPlayer?.name;
                 
                 if (!isHost) {
-                    alert('Nur der Host kann die Einstellungen ändern!');
+                    showError('Nur der Host kann die Einstellungen ändern!');
                     return;
                 }
 
-                // Update game settings via server
                 const newMapSize = parseInt(document.getElementById('hostMapSize').value);
                 
                 this.socket.emit('update-game-settings', {
@@ -766,115 +815,25 @@
                 };
                 return sizes[size] || `${size}x${size}`;
             }
+        }
 
-            showNotification(message) {
-                const notification = document.createElement('div');
-                notification.style.cssText = `
-                    position: fixed;
-                    top: 80px;
-                    right: 20px;
-                    background: rgba(76, 175, 80, 0.9);
-                    color: white;
-                    padding: 15px 20px;
-                    border-radius: 10px;
-                    font-weight: bold;
-                    z-index: 1000;
-                    transform: translateX(100%);
-                    transition: transform 0.3s ease;
-                `;
-                notification.textContent = message;
-                document.body.appendChild(notification);
-                
-                setTimeout(() => notification.style.transform = 'translateX(0)', 100);
-                setTimeout(() => {
-                    notification.style.transform = 'translateX(100%)';
-                    setTimeout(() => notification.remove(), 300);
-                }, 3000);
+        // Initialize when DOM is ready
+        let lobby = null;
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Initialisiere Lobby...');
+            lobby = new SimpleLobby();
+            window.lobby = lobby; // Make globally available
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (lobby && lobby.socket) {
+                lobby.socket.disconnect();
             }
-        }
+        });
 
-        // Globale Lobby-Instanz
-        const lobby = new MultiplayerLobby();
-
-        // Globale Funktionen
-        function createGame() {
-            lobby.createGame();
-        }
-
-        function joinGame(gameId) {
-            lobby.joinGame(gameId);
-        }
-
-        function leaveGame() {
-            lobby.leaveGame();
-        }
-
-        function toggleReady() {
-            lobby.toggleReady();
-        }
-
-        function startGame() {
-            lobby.startGame();
-        }
-
-        function refreshGames() {
-            lobby.refreshGames();
-        }
-
-        // Input-Validierung hinzufügen - warten bis alle Scripts geladen sind
-        function initializeInputValidation() {
-            // Warten bis GameUtils verfügbar ist
-            if (typeof GameUtils === 'undefined') {
-                setTimeout(initializeInputValidation, 100);
-                return;
-            }
-            
-            const playerNameInput = document.getElementById('playerName');
-            const gameNameInput = document.getElementById('gameName');
-            
-            if (playerNameInput) {
-                playerNameInput.addEventListener('input', (e) => {
-                    const value = e.target.value;
-                    
-                    // Fallback-Validierung falls GameUtils nicht verfügbar
-                    const isValid = GameUtils ? GameUtils.isValidName(value) : (value.length >= 2 && value.length <= 20);
-                    
-                    e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
-                    
-                    if (!isValid && value.length > 0) {
-                        e.target.title = 'Name muss 2-20 Zeichen lang sein (nur Buchstaben, Zahlen, Leerzeichen, - und _)';
-                    } else {
-                        e.target.title = '';
-                    }
-                });
-            }
-            
-            if (gameNameInput) {
-                gameNameInput.addEventListener('input', (e) => {
-                    const value = e.target.value;
-                    
-                    // Fallback-Validierung falls GameUtils nicht verfügbar
-                    const isValid = GameUtils ? GameUtils.isValidGameName(value) : (value.length >= 3 && value.length <= 30);
-                    
-                    e.target.style.borderColor = isValid ? '#27ae60' : '#e74c3c';
-                    
-                    if (!isValid && value.length > 0) {
-                        e.target.title = 'Spielname muss 3-30 Zeichen lang sein';
-                    } else {
-                        e.target.title = '';
-                    }
-                });
-            }
-            
-            console.log('✅ Lobby Input-Validierung aktiviert');
-        }
-
-        // Starte Initialisierung
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeInputValidation);
-        } else {
-            initializeInputValidation();
-        }
+        console.log('✅ Lobby Script geladen');
     </script>
 
 </body>
