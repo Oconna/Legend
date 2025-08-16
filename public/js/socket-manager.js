@@ -1,4 +1,4 @@
-// socket-manager.js - Socket.io Verbindungsmanagement
+// socket-manager.js - Socket.io Verbindungsmanagement (Korrigiert)
 
 console.log('🔌 Initialisiere Socket Manager...');
 
@@ -11,11 +11,30 @@ class SocketManager {
         this.socket = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = GAME_CONFIG.RECONNECT_ATTEMPTS;
-        this.reconnectDelay = GAME_CONFIG.RECONNECT_DELAY;
+        this.maxReconnectAttempts = GAME_CONFIG?.RECONNECT_ATTEMPTS || 5;
+        this.reconnectDelay = GAME_CONFIG?.RECONNECT_DELAY || 2000;
         this.pingInterval = null;
         
-        this.initSocket();
+        // Nur initialisieren wenn wir nicht im Demo-Modus sind
+        const urlParams = new URLSearchParams(window.location.search);
+        const settingsParam = urlParams.get('settings');
+        let gameSettings = null;
+        
+        if (settingsParam) {
+            try {
+                gameSettings = JSON.parse(decodeURIComponent(settingsParam));
+            } catch (error) {
+                console.warn('⚠️ Fehler beim Parsen der Spiel-Einstellungen:', error);
+            }
+        }
+        
+        // Nur Socket initialisieren wenn wir eine echte gameId haben
+        if (gameSettings && gameSettings.gameId && gameSettings.gameId !== 'demo-game') {
+            this.initSocket();
+        } else {
+            console.log('🤖 Demo-Modus erkannt - Socket Manager deaktiviert');
+            this.isConnected = false;
+        }
     }
 
     // ========================================
@@ -34,14 +53,16 @@ class SocketManager {
                 forceNew: false
             });
             
-            gameState.setSocket(this.socket);
+            if (window.gameState) {
+                gameState.setSocket(this.socket);
+            }
             this.setupEventListeners();
             this.startPingMonitoring();
             
             console.log('✅ Socket.io initialisiert');
         } catch (error) {
             console.error('❌ Socket.io Fehler:', error);
-            this.showNotification('Fehler beim Verbinden zum Server', NOTIFICATION_TYPES.ERROR);
+            this.showNotification('Fehler beim Verbinden zum Server', 'error');
         }
     }
 
@@ -50,6 +71,8 @@ class SocketManager {
     // ========================================
 
     setupEventListeners() {
+        if (!this.socket) return;
+        
         // Connection Events
         this.socket.on('connect', () => this.onConnect());
         this.socket.on('disconnect', (reason) => this.onDisconnect(reason));
@@ -97,11 +120,13 @@ class SocketManager {
         this.isConnected = true;
         this.reconnectAttempts = 0;
         
-        gameState.setConnectionStatus(true);
-        this.showNotification('Verbunden!', NOTIFICATION_TYPES.SUCCESS);
+        if (window.gameState) {
+            gameState.setConnectionStatus(true);
+        }
+        this.showNotification('Verbunden!', 'success');
         
         // Request current game state if in a game
-        if (gameState.gameSettings?.gameId) {
+        if (window.gameState && gameState.data.gameSettings?.gameId) {
             this.requestTurnInfo();
         }
     }
@@ -110,12 +135,14 @@ class SocketManager {
         console.log('❌ Verbindung zum Server getrennt:', reason);
         this.isConnected = false;
         
-        gameState.setConnectionStatus(false);
+        if (window.gameState) {
+            gameState.setConnectionStatus(false);
+        }
         
         if (reason === 'io server disconnect') {
-            this.showNotification('Server hat Verbindung getrennt', NOTIFICATION_TYPES.WARNING);
+            this.showNotification('Server hat Verbindung getrennt', 'warning');
         } else {
-            this.showNotification('Verbindung verloren - Versuche Wiederverbindung...', NOTIFICATION_TYPES.WARNING);
+            this.showNotification('Verbindung verloren - Versuche Wiederverbindung...', 'warning');
         }
     }
 
@@ -126,19 +153,19 @@ class SocketManager {
         if (this.reconnectAttempts <= this.maxReconnectAttempts) {
             this.showNotification(
                 `Verbindungsfehler - Versuch ${this.reconnectAttempts}/${this.maxReconnectAttempts}`, 
-                NOTIFICATION_TYPES.WARNING
+                'warning'
             );
         } else {
-            this.showNotification('Verbindung fehlgeschlagen - Bitte Seite neu laden', NOTIFICATION_TYPES.ERROR);
+            this.showNotification('Verbindung fehlgeschlagen - Bitte Seite neu laden', 'error');
         }
     }
 
     onReconnect(attemptNumber) {
         console.log('🔄 Erfolgreich wieder verbunden nach', attemptNumber, 'Versuchen');
-        this.showNotification('Wieder verbunden!', NOTIFICATION_TYPES.SUCCESS);
+        this.showNotification('Wieder verbunden!', 'success');
         
         // Request current game state
-        if (gameState.gameSettings?.gameId) {
+        if (window.gameState && gameState.data.gameSettings?.gameId) {
             setTimeout(() => this.requestTurnInfo(), 1000);
         }
     }
@@ -151,7 +178,7 @@ class SocketManager {
         console.error('❌ Alle Neuverbindungsversuche fehlgeschlagen');
         this.showNotification(
             'Verbindung zum Server verloren. Bitte laden Sie die Seite neu.', 
-            NOTIFICATION_TYPES.ERROR
+            'error'
         );
     }
 
@@ -160,176 +187,55 @@ class SocketManager {
     // ========================================
 
     onGameStarted(data) {
-        console.log('🎮 Spiel gestartet, wechsle zu Rassen-Auswahl');
-        gameState.setGamePhase(GAME_PHASES.RACE_SELECTION);
+        console.log('🎮 Spiel vom Server gestartet:', data);
+        if (window.gameState) {
+            gameState.setGamePhase('race_selection');
+        }
         
         // Trigger race selection modal
         window.dispatchEvent(new CustomEvent('showRaceSelection'));
         
-        this.showNotification('Spiel gestartet! Wähle deine Rasse.', NOTIFICATION_TYPES.INFO);
+        this.showNotification('Spiel gestartet! Wähle deine Rasse.', 'info');
     }
 
     onRaceSelected(data) {
         console.log('🏛️ Spieler hat Rasse gewählt:', data.playerName, data.raceId);
-        gameState.setOtherPlayerRace(data.playerName, data.raceId);
+        if (window.gameState) {
+            gameState.setOtherPlayerRace(data.playerName, data.raceId);
+        }
         
         // Update race selection UI
         window.dispatchEvent(new CustomEvent('raceSelectionUpdate', { detail: data }));
         
-        this.showNotification(`${data.playerName} hat eine Rasse gewählt`, NOTIFICATION_TYPES.INFO);
+        this.showNotification(`${data.playerName} hat eine Rasse gewählt`, 'info');
     }
 
     onRaceSelectionFailed(data) {
         console.error('❌ Rassen-Auswahl fehlgeschlagen:', data.error);
-        this.showNotification(`Rassen-Auswahl fehlgeschlagen: ${data.error}`, NOTIFICATION_TYPES.ERROR);
+        this.showNotification(`Rassen-Auswahl fehlgeschlagen: ${data.error}`, 'error');
         
         // Re-enable race selection
         window.dispatchEvent(new CustomEvent('raceSelectionFailed', { detail: data }));
     }
 
     onAllRacesSelected(data) {
-        console.log('🎯 Alle Rassen gewählt, Spiel beginnt!');
-        gameState.setGamePhase(GAME_PHASES.PLAYING);
-        gameState.setTurnData({
-            turnOrder: data.turnOrder,
-            currentPlayer: data.currentPlayer,
-            turnNumber: 1,
-            timeRemaining: GAME_CONFIG.TURN_TIME_LIMIT
-        });
+        console.log('🎯 Alle Rassen vom Server gewählt!');
+        if (window.gameState) {
+            gameState.setGamePhase('playing');
+            gameState.setTurnData({
+                turnOrder: data.turnOrder,
+                currentPlayer: data.currentPlayer,
+                turnNumber: 1,
+                timeRemaining: GAME_CONFIG?.TURN_TIME_LIMIT || 120
+            });
+        }
         
         // Hide race selection and show game
         window.dispatchEvent(new CustomEvent('hideRaceSelection'));
         window.dispatchEvent(new CustomEvent('gameStarted', { detail: data }));
         
-        const isFirstPlayer = data.currentPlayer === gameState.currentPlayer?.name;
+        const isFirstPlayer = data.currentPlayer === (window.gameState ? gameState.currentPlayer?.name : null);
         this.showGameStartMessage(data, isFirstPlayer);
-    }
-
-    // ========================================
-    // TURN SYSTEM EVENT HANDLERS
-    // ========================================
-
-    onTurnEnded(data) {
-        console.log('⏭️ Zug beendet:', data.previousPlayer, '->', data.currentPlayer);
-        
-        gameState.setTurnData({
-            currentPlayer: data.currentPlayer,
-            turnNumber: data.turnNumber,
-            timeRemaining: GAME_CONFIG.TURN_TIME_LIMIT
-        });
-        
-        // Reset turn state
-        gameState.nextTurn();
-        
-        // Update UI
-        window.dispatchEvent(new CustomEvent('turnChanged', { detail: data }));
-        
-        this.showTurnChangeMessage(data);
-    }
-
-    onTurnForced(data) {
-        console.log('⏰ Zug erzwungen:', data.message);
-        
-        gameState.setTurnData({
-            currentPlayer: data.currentPlayer,
-            turnNumber: data.turnNumber,
-            timeRemaining: GAME_CONFIG.TURN_TIME_LIMIT
-        });
-        
-        window.dispatchEvent(new CustomEvent('turnForced', { detail: data }));
-        this.showNotification(data.message, NOTIFICATION_TYPES.WARNING);
-    }
-
-    onTurnInfo(data) {
-        gameState.setTurnData({
-            currentPlayer: data.currentPlayer,
-            turnNumber: data.turnNumber,
-            timeRemaining: data.remainingTime
-        });
-        
-        window.dispatchEvent(new CustomEvent('turnInfoUpdate', { detail: data }));
-    }
-
-    onEndTurnFailed(data) {
-        console.error('❌ Zug beenden fehlgeschlagen:', data.error);
-        this.showNotification(`Zug beenden fehlgeschlagen: ${data.error}`, NOTIFICATION_TYPES.ERROR);
-    }
-
-    // ========================================
-    // PLAYER EVENT HANDLERS
-    // ========================================
-
-    onPlayerJoined(data) {
-        console.log('👤 Spieler beigetreten:', data.player.name);
-        this.showNotification(`${data.player.name} ist beigetreten`, NOTIFICATION_TYPES.INFO);
-        
-        window.dispatchEvent(new CustomEvent('playerJoined', { detail: data }));
-    }
-
-    onPlayerLeft(data) {
-        console.log('👋 Spieler hat verlassen:', data.playerName);
-        this.showNotification(`${data.playerName} hat das Spiel verlassen`, NOTIFICATION_TYPES.WARNING);
-        
-        window.dispatchEvent(new CustomEvent('playerLeft', { detail: data }));
-    }
-
-    onPlayerReadyChanged(data) {
-        const status = data.player.ready ? 'bereit' : 'nicht bereit';
-        console.log(`${data.player.name} ist ${status}`);
-        
-        window.dispatchEvent(new CustomEvent('playerReadyChanged', { detail: data }));
-    }
-
-    // ========================================
-    // GAME STATE EVENT HANDLERS
-    // ========================================
-
-    onGameSettingsUpdated(data) {
-        console.log('⚙️ Spieleinstellungen aktualisiert');
-        gameState.updateState('gameSettings', data.game);
-        
-        window.dispatchEvent(new CustomEvent('gameSettingsUpdated', { detail: data }));
-    }
-
-    onUnitMoved(data) {
-        console.log('🚶 Einheit bewegt:', data.unitId, 'nach', data.newPosition);
-        
-        // Update unit position in game state
-        gameState.updateUnit(data.unitId, {
-            x: data.newPosition.x,
-            y: data.newPosition.y,
-            hasMoved: true
-        });
-        
-        window.dispatchEvent(new CustomEvent('unitMoved', { detail: data }));
-    }
-
-    onUnitAttacked(data) {
-        console.log('⚔️ Einheit angegriffen:', data.attackerId, '->', data.defenderId);
-        
-        window.dispatchEvent(new CustomEvent('unitAttacked', { detail: data }));
-        
-        if (data.defenderDestroyed) {
-            this.showNotification(`${data.defenderName} wurde zerstört!`, NOTIFICATION_TYPES.WARNING);
-        }
-    }
-
-    // ========================================
-    // MISC EVENT HANDLERS
-    // ========================================
-
-    onServerMessage(data) {
-        console.log('📢 Server-Nachricht:', data.message);
-        this.showNotification(data.message, data.type || NOTIFICATION_TYPES.INFO);
-    }
-
-    onError(error) {
-        console.error('⚠️ Socket Fehler:', error);
-        this.showNotification('Serverfehler aufgetreten', NOTIFICATION_TYPES.ERROR);
-    }
-
-    onPong() {
-        // Silent pong response
     }
 
     // ========================================
@@ -337,77 +243,44 @@ class SocketManager {
     // ========================================
 
     selectRace(raceId) {
-        if (gameState.gamePhase !== GAME_PHASES.RACE_SELECTION) {
+        if (!window.gameState || gameState.gamePhase !== 'race_selection') {
             console.warn('⚠️ Rassen-Auswahl nicht aktiv');
             return false;
         }
         
-        this.emit('select-race', {
-            gameId: gameState.gameSettings.gameId,
+        return this.emit('select-race', {
+            gameId: gameState.data.gameSettings.gameId,
             raceId: raceId
         });
-        
-        return true;
     }
 
     endTurn() {
-        if (!gameState.isMyTurn || gameState.gamePhase !== GAME_PHASES.PLAYING) {
+        if (!window.gameState || !gameState.isMyTurn || gameState.gamePhase !== 'playing') {
             console.warn('⚠️ Nicht am Zug oder Spiel nicht aktiv');
             return false;
         }
         
-        this.emit('end-turn', {
-            gameId: gameState.gameSettings.gameId
-        });
-        
-        return true;
-    }
-
-    moveUnit(unitId, newPosition) {
-        this.emit('move-unit', {
-            gameId: gameState.gameSettings.gameId,
-            unitId: unitId,
-            newPosition: newPosition
-        });
-    }
-
-    attackUnit(attackerId, defenderId) {
-        this.emit('attack-unit', {
-            gameId: gameState.gameSettings.gameId,
-            attackerId: attackerId,
-            defenderId: defenderId
-        });
-    }
-
-    buyUnit(unitType, position) {
-        this.emit('buy-unit', {
-            gameId: gameState.gameSettings.gameId,
-            unitType: unitType,
-            position: position
-        });
-    }
-
-    upgradeUnit(unitId) {
-        this.emit('upgrade-unit', {
-            gameId: gameState.gameSettings.gameId,
-            unitId: unitId
+        return this.emit('end-turn', {
+            gameId: gameState.data.gameSettings.gameId
         });
     }
 
     requestTurnInfo() {
-        if (gameState.gameSettings?.gameId) {
-            this.emit('get-turn-info', {
-                gameId: gameState.gameSettings.gameId
+        if (window.gameState && gameState.data.gameSettings?.gameId) {
+            return this.emit('get-turn-info', {
+                gameId: gameState.data.gameSettings.gameId
             });
         }
+        return false;
     }
 
     requestGameState() {
-        if (gameState.gameSettings?.gameId) {
-            this.emit('get-game-state', {
-                gameId: gameState.gameSettings.gameId
+        if (window.gameState && gameState.data.gameSettings?.gameId) {
+            return this.emit('get-game-state', {
+                gameId: gameState.data.gameSettings.gameId
             });
         }
+        return false;
     }
 
     // ========================================
@@ -426,11 +299,13 @@ class SocketManager {
     }
 
     startPingMonitoring() {
+        if (!this.socket) return;
+        
         this.pingInterval = setInterval(() => {
             if (this.socket && this.isConnected) {
                 this.socket.emit('ping');
             }
-        }, GAME_CONFIG.PING_INTERVAL);
+        }, GAME_CONFIG?.PING_INTERVAL || 30000);
     }
 
     stopPingMonitoring() {
@@ -444,14 +319,14 @@ class SocketManager {
     // NOTIFICATION METHODS
     // ========================================
 
-    showNotification(message, type = NOTIFICATION_TYPES.INFO) {
+    showNotification(message, type = 'info') {
         window.dispatchEvent(new CustomEvent('showNotification', {
             detail: { message, type }
         }));
     }
 
     showGameStartMessage(data, isFirstPlayer) {
-        const raceName = gameState.selectedRace?.name || 'Unbekannt';
+        const raceName = window.gameState ? (gameState.selectedRace?.name || 'Unbekannt') : 'Unbekannt';
         const startingPlayer = data.currentPlayer;
         
         let message = `🎮 Spiel gestartet!\n\nDu spielst als: ${raceName}\n`;
@@ -462,23 +337,76 @@ class SocketManager {
             message += `${startingPlayer} beginnt das Spiel.`;
         }
         
-        this.showNotification(message, NOTIFICATION_TYPES.SUCCESS);
+        this.showNotification(message, 'success');
     }
 
-    showTurnChangeMessage(data) {
-        const isMyTurn = data.currentPlayer === gameState.currentPlayer?.name;
-        
-        if (isMyTurn) {
-            this.showNotification(
-                `🎯 Du bist dran! (Runde ${data.turnNumber})`, 
-                NOTIFICATION_TYPES.SUCCESS
-            );
-        } else {
-            this.showNotification(
-                `⏳ ${data.currentPlayer} ist dran`, 
-                NOTIFICATION_TYPES.INFO
-            );
+    // ========================================
+    // PLACEHOLDER EVENT HANDLERS
+    // ========================================
+
+    onTurnEnded(data) {
+        console.log('⏭️ Turn ended:', data);
+        window.dispatchEvent(new CustomEvent('turnEnded', { detail: data }));
+    }
+
+    onTurnForced(data) {
+        console.log('⏰ Turn forced:', data);
+        window.dispatchEvent(new CustomEvent('turnForced', { detail: data }));
+    }
+
+    onTurnInfo(data) {
+        console.log('ℹ️ Turn info:', data);
+        window.dispatchEvent(new CustomEvent('turnInfo', { detail: data }));
+    }
+
+    onEndTurnFailed(data) {
+        console.error('❌ End turn failed:', data);
+        this.showNotification(`Zug beenden fehlgeschlagen: ${data.error}`, 'error');
+    }
+
+    onPlayerJoined(data) {
+        console.log('👤 Player joined:', data);
+        this.showNotification(`${data.player.name} ist beigetreten`, 'info');
+    }
+
+    onPlayerLeft(data) {
+        console.log('👋 Player left:', data);
+        this.showNotification(`${data.playerName} hat das Spiel verlassen`, 'warning');
+    }
+
+    onPlayerReadyChanged(data) {
+        console.log('✅ Player ready changed:', data);
+    }
+
+    onGameSettingsUpdated(data) {
+        console.log('⚙️ Game settings updated:', data);
+        if (window.gameState) {
+            gameState.updateState('gameSettings', data.game);
         }
+    }
+
+    onUnitMoved(data) {
+        console.log('🚶 Unit moved:', data);
+        window.dispatchEvent(new CustomEvent('unitMoved', { detail: data }));
+    }
+
+    onUnitAttacked(data) {
+        console.log('⚔️ Unit attacked:', data);
+        window.dispatchEvent(new CustomEvent('unitAttacked', { detail: data }));
+    }
+
+    onServerMessage(data) {
+        console.log('📢 Server message:', data.message);
+        this.showNotification(data.message, data.type || 'info');
+    }
+
+    onError(error) {
+        console.error('⚠️ Socket error:', error);
+        this.showNotification('Serverfehler aufgetreten', 'error');
+    }
+
+    onPong() {
+        // Silent pong response
     }
 
     // ========================================
@@ -493,7 +421,9 @@ class SocketManager {
         }
         
         this.isConnected = false;
-        gameState.setConnectionStatus(false);
+        if (window.gameState) {
+            gameState.setConnectionStatus(false);
+        }
         
         console.log('🔌 Socket Manager getrennt');
     }
@@ -507,7 +437,8 @@ class SocketManager {
             isConnected: this.isConnected,
             socketId: this.socket?.id,
             reconnectAttempts: this.reconnectAttempts,
-            transport: this.socket?.io?.engine?.transport?.name
+            transport: this.socket?.io?.engine?.transport?.name,
+            hasSocket: !!this.socket
         };
     }
 
@@ -533,10 +464,13 @@ if (typeof window !== 'undefined') {
     
     // Auto-initialize when script loads
     document.addEventListener('DOMContentLoaded', () => {
-        if (!socketManager) {
-            socketManager = new SocketManager();
-            window.socketManager = socketManager;
-        }
+        // Warte bis Game State verfügbar ist
+        setTimeout(() => {
+            if (!socketManager) {
+                socketManager = new SocketManager();
+                window.socketManager = socketManager;
+            }
+        }, 200);
     });
 }
 
