@@ -613,32 +613,147 @@ class Unit {
 }
 
 // ========================================
-// EXPORT FÜR BROWSER/NODE
+// FALLBACK RACES (für den Fall, dass races-data.json nicht geladen werden kann)
 // ========================================
+
+const FALLBACK_RACES = [
+    {
+        id: "humans",
+        name: "Menschen",
+        icon: "👑",
+        description: "Vielseitige und anpassungsfähige Rasse mit ausgewogenen Einheiten",
+        color: "#3498db",
+        specialAbility: "Zusätzliches Gold aus Städten (+1 Gold pro Stadt)",
+        startingGold: 120,
+        goldMultiplier: 1.2,
+        units: [
+            {
+                id: "peasant",
+                name: "Bauer",
+                icon: "👨‍🌾",
+                description: "Billige Grundeinheit",
+                baseStats: { hp: 30, attack: 8, defense: 5, movement: 3 },
+                movementType: "ground",
+                attackRange: 1,
+                cost: 15,
+                upgradeCost: 10,
+                maxLevel: 5,
+                abilities: []
+            },
+            {
+                id: "swordsman",
+                name: "Schwertkämpfer",
+                icon: "⚔️",
+                description: "Nahkampf-Spezialist",
+                baseStats: { hp: 50, attack: 15, defense: 12, movement: 3 },
+                movementType: "ground",
+                attackRange: 1,
+                cost: 30,
+                upgradeCost: 20,
+                maxLevel: 5,
+                abilities: []
+            }
+        ]
+    },
+    {
+        id: "elves",
+        name: "Elfen",
+        icon: "🧝‍♀️",
+        description: "Magische Rasse mit hoher Intelligenz und Fernkampf-Fähigkeiten",
+        color: "#27ae60",
+        specialAbility: "Einheiten regenerieren HP außerhalb des Kampfes",
+        startingGold: 100,
+        goldMultiplier: 1.0,
+        units: [
+            {
+                id: "archer",
+                name: "Bogenschütze",
+                icon: "🏹",
+                description: "Fernkampf-Einheit",
+                baseStats: { hp: 35, attack: 12, defense: 6, movement: 3 },
+                movementType: "ground",
+                attackRange: 3,
+                cost: 25,
+                upgradeCost: 18,
+                maxLevel: 5,
+                abilities: []
+            },
+            {
+                id: "mage",
+                name: "Magier",
+                icon: "🧙‍♂️",
+                description: "Magische Fernkampf-Einheit",
+                baseStats: { hp: 30, attack: 18, defense: 4, movement: 2 },
+                movementType: "ground",
+                attackRange: 2,
+                cost: 40,
+                upgradeCost: 30,
+                maxLevel: 5,
+                abilities: []
+            }
+        ]
+    },
+    {
+        id: "orcs",
+        name: "Orks",
+        icon: "👹",
+        description: "Kriegerische Rasse mit starken Nahkampf-Einheiten",
+        color: "#e74c3c",
+        specialAbility: "Einheiten erhalten +2 Attack beim ersten Angriff",
+        startingGold: 80,
+        goldMultiplier: 0.8,
+        units: [
+            {
+                id: "warrior",
+                name: "Krieger",
+                icon: "⚔️",
+                description: "Starke Nahkampf-Einheit",
+                baseStats: { hp: 60, attack: 18, defense: 10, movement: 3 },
+                movementType: "ground",
+                attackRange: 1,
+                cost: 35,
+                upgradeCost: 25,
+                maxLevel: 5,
+                abilities: []
+            },
+            {
+                id: "berserker",
+                name: "Berserker",
+                icon: "😤",
+                description: "Wilde Kampfmaschine",
+                baseStats: { hp: 45, attack: 25, defense: 8, movement: 4 },
+                movementType: "ground",
+                attackRange: 1,
+                cost: 45,
+                upgradeCost: 35,
+                maxLevel: 5,
+                abilities: []
+            }
+        ]
+    }
+];
+
+// ========================================
+// GLOBAL EXPORTS
+// ========================================
+
+if (typeof window !== 'undefined') {
+    window.FALLBACK_RACES = FALLBACK_RACES;
+    window.MOVEMENT_TYPES = MOVEMENT_TYPES;
+    window.TERRAIN_MOVEMENT_COSTS = TERRAIN_MOVEMENT_COSTS;
+    window.UnitDefinition = UnitDefinition;
+    window.RaceDefinition = RaceDefinition;
+}
+
+// Export für Module
 if (typeof module !== 'undefined' && module.exports) {
-    // Node.js Export
     module.exports = {
+        FALLBACK_RACES,
         MOVEMENT_TYPES,
         TERRAIN_MOVEMENT_COSTS,
         UnitDefinition,
-        RaceDefinition,
-        Unit,
-        ALL_RACES,
-        getRaceById,
-        getAllRaces,
-        getMovementCost
-    };
-} else {
-    // Browser Global
-    window.RaceSystem = {
-        MOVEMENT_TYPES,
-        TERRAIN_MOVEMENT_COSTS,
-        UnitDefinition,
-        RaceDefinition,
-        Unit,
-        ALL_RACES,
-        getRaceById,
-        getAllRaces,
-        getMovementCost
+        RaceDefinition
     };
 }
+
+console.log('🏛️ Rassen-System geladen:', FALLBACK_RACES.length, 'Fallback-Rassen verfügbar');

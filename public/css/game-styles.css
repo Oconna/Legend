@@ -185,6 +185,15 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 1000;
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.race-selection-modal[aria-hidden="false"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .race-selection-content {

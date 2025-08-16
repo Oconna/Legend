@@ -29,6 +29,22 @@ class RaceSelection {
             return;
         }
         
+        // Überprüfe, ob alle benötigten DOM-Elemente vorhanden sind
+        if (!this.modal) {
+            console.error('❌ Race Selection Modal nicht gefunden!');
+            return;
+        }
+        
+        if (!this.racesGrid) {
+            console.error('❌ Races Grid nicht gefunden!');
+            return;
+        }
+        
+        if (!this.confirmBtn) {
+            console.error('❌ Confirm Button nicht gefunden!');
+            return;
+        }
+        
         this.setupEventListeners();
         this.setupGameStateListeners();
         
@@ -108,7 +124,7 @@ class RaceSelection {
         
         if (availableRaces.length === 0) {
             console.error('❌ Keine Rassen verfügbar');
-            this.racesGrid.innerHTML = '<div style="text-align: center; padding: 20px;">Keine Rassen verfügbar</div>';
+            this.racesGrid.innerHTML = '<div style="text-align: center; padding: 20px; color: #e74c3c;">❌ Keine Rassen verfügbar. Bitte laden Sie die Seite neu.</div>';
             return;
         }
         
@@ -400,10 +416,15 @@ class RaceSelection {
         console.log('🔍 Modal Element:', this.modal);
         console.log('🔍 Modal display vorher:', this.modal.style.display);
         
+        // Stelle sicher, dass das Modal sichtbar ist
         this.modal.style.display = 'flex';
+        this.modal.style.visibility = 'visible';
+        this.modal.style.opacity = '1';
         this.modal.setAttribute('aria-hidden', 'false');
         
         console.log('🔍 Modal display nachher:', this.modal.style.display);
+        console.log('🔍 Modal visibility:', this.modal.style.visibility);
+        console.log('🔍 Modal opacity:', this.modal.style.opacity);
         
         // Render races if not already done
         if (this.racesGrid && this.racesGrid.children.length === 0) {
@@ -422,6 +443,18 @@ class RaceSelection {
         
         // Disable body scroll
         document.body.style.overflow = 'hidden';
+        
+        // Zusätzliche Überprüfung nach kurzer Verzögerung
+        setTimeout(() => {
+            if (this.modal.style.display === 'flex') {
+                console.log('✅ Race Selection Modal ist sichtbar');
+            } else {
+                console.error('❌ Race Selection Modal ist nicht sichtbar!');
+                console.log('🔍 Aktueller display Wert:', this.modal.style.display);
+                // Versuche es nochmal
+                this.modal.style.display = 'flex';
+            }
+        }, 100);
         
         console.log('✅ Race Selection Modal sollte jetzt sichtbar sein');
     }
@@ -478,7 +511,18 @@ class RaceSelection {
     // ========================================
 
     show() {
+        console.log('🔍 RaceSelection.show() aufgerufen');
+        console.log('🔍 Modal Element:', this.modal);
+        console.log('🔍 Races Grid:', this.racesGrid);
+        console.log('🔍 Confirm Button:', this.confirmBtn);
+        
+        if (!this.modal) {
+            console.error('❌ Modal nicht gefunden!');
+            return false;
+        }
+        
         this.showModal();
+        return true;
     }
 
     hide() {
@@ -486,16 +530,37 @@ class RaceSelection {
     }
 
     isVisible() {
-        return this.isModalVisible();
+        const isVisible = this.isModalVisible();
+        console.log('🔍 Race Selection sichtbar?', isVisible);
+        return isVisible;
     }
 
     reset() {
         this.selectedRaceId = null;
         this.isProcessing = false;
         this.enableConfirmButton();
-        this.racesGrid.querySelectorAll('.race-card').forEach(card => {
-            card.classList.remove('selected', 'taken');
-        });
+        if (this.racesGrid) {
+            this.racesGrid.querySelectorAll('.race-card').forEach(card => {
+                card.classList.remove('selected', 'taken');
+            });
+        }
+    }
+
+    // Debug-Funktion
+    debug() {
+        console.log('🔍 === RACE SELECTION DEBUG ===');
+        console.log('🔍 Modal Element:', this.modal);
+        console.log('🔍 Races Grid:', this.racesGrid);
+        console.log('🔍 Confirm Button:', this.confirmBtn);
+        console.log('🔍 Status Display:', this.statusDisplay);
+        console.log('🔍 Selected Race ID:', this.selectedRaceId);
+        console.log('🔍 Is Processing:', this.isProcessing);
+        console.log('🔍 Modal Display Style:', this.modal ? this.modal.style.display : 'N/A');
+        console.log('🔍 Modal Visibility Style:', this.modal ? this.modal.style.visibility : 'N/A');
+        console.log('🔍 Modal Opacity Style:', this.modal ? this.modal.style.opacity : 'N/A');
+        console.log('🔍 LOADED_RACES:', window.LOADED_RACES);
+        console.log('🔍 FALLBACK_RACES:', window.FALLBACK_RACES);
+        console.log('🔍 ================================');
     }
 }
 
@@ -514,11 +579,41 @@ if (typeof window !== 'undefined') {
             console.log('🏛️ Initialisiere Race Selection...');
             raceSelection = new RaceSelection();
             window.raceSelection = raceSelection;
+            
+            // Debug-Informationen
+            setTimeout(() => {
+                if (raceSelection) {
+                    raceSelection.debug();
+                }
+            }, 1000);
         }
     });
+    
+    // Manuelle Test-Funktion für die Konsole
+    window.testRaceSelection = () => {
+        console.log('🧪 Teste Race Selection...');
+        if (window.raceSelection) {
+            window.raceSelection.debug();
+            window.raceSelection.show();
+        } else {
+            console.error('❌ Race Selection nicht verfügbar');
+        }
+    };
+    
+    // Manuelle Anzeige der Race Selection
+    window.showRaceSelection = () => {
+        console.log('🔍 Manueller Aufruf: Zeige Race Selection...');
+        if (window.raceSelection) {
+            window.raceSelection.show();
+        } else {
+            console.error('❌ Race Selection nicht verfügbar');
+        }
+    };
 }
 
 console.log('✅ Race Selection System bereit');
+console.log('🧪 Verwende window.testRaceSelection() zum Testen');
+console.log('🔍 Verwende window.showRaceSelection() zum manuellen Anzeigen');
 
 // Export für Module
 if (typeof module !== 'undefined' && module.exports) {

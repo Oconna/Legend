@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Selection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .test-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        
+        .test-button:hover {
+            background: #2980b9;
+        }
+        
+        .debug-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Race Selection Test</h1>
+        
+        <div class="debug-info">
+            <strong>Debug-Informationen:</strong><br>
+            Diese Seite testet die Race Selection isoliert vom Hauptspiel.
+        </div>
+        
+        <div>
+            <button class="test-button" onclick="testRaceSelection()">🧪 Test Race Selection</button>
+            <button class="test-button" onclick="showRaceSelection()">🔍 Zeige Race Selection</button>
+            <button class="test-button" onclick="hideRaceSelection()">❌ Verstecke Race Selection</button>
+            <button class="test-button" onclick="debugRaceSelection()">🐛 Debug Info</button>
+        </div>
+        
+        <div class="debug-info" id="debugOutput">
+            Klicke auf einen Button, um die Race Selection zu testen...
+        </div>
+    </div>
+
+    <!-- Race Selection Modal -->
+    <div class="race-selection-modal" id="raceSelectionModal">
+        <div class="race-selection-content">
+            <h2>🏛️ Wähle deine Rasse</h2>
+            <div id="raceSelectionStatus" class="info-display" style="text-align: center; margin-bottom: 20px;">
+                Wähle eine Rasse aus den verfügbaren Optionen
+            </div>
+            <div class="races-grid" id="racesGrid">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div style="text-align: center;">
+                <button class="btn btn-success" id="confirmRaceBtn" disabled>✅ Rasse bestätigen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSS für Race Selection -->
+    <link rel="stylesheet" href="css/game-styles.css">
+    
+    <!-- JavaScript Dependencies -->
+    <script src="js/races.js"></script>
+    <script src="js/race-selection.js"></script>
+    
+    <script>
+        function log(message) {
+            const debugOutput = document.getElementById('debugOutput');
+            debugOutput.innerHTML += '<br>' + message;
+            console.log(message);
+        }
+        
+        function testRaceSelection() {
+            log('🧪 Teste Race Selection...');
+            if (window.raceSelection) {
+                window.raceSelection.debug();
+                window.raceSelection.show();
+                log('✅ Race Selection getestet');
+            } else {
+                log('❌ Race Selection nicht verfügbar');
+            }
+        }
+        
+        function showRaceSelection() {
+            log('🔍 Zeige Race Selection...');
+            if (window.raceSelection) {
+                window.raceSelection.show();
+                log('✅ Race Selection angezeigt');
+            } else {
+                log('❌ Race Selection nicht verfügbar');
+            }
+        }
+        
+        function hideRaceSelection() {
+            log('❌ Verstecke Race Selection...');
+            if (window.raceSelection) {
+                window.raceSelection.hide();
+                log('✅ Race Selection versteckt');
+            } else {
+                log('❌ Race Selection nicht verfügbar');
+            }
+        }
+        
+        function debugRaceSelection() {
+            log('🐛 Debug Race Selection...');
+            if (window.raceSelection) {
+                window.raceSelection.debug();
+                log('✅ Debug-Informationen angezeigt');
+            } else {
+                log('❌ Race Selection nicht verfügbar');
+            }
+        }
+        
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Seite geladen, warte auf Race Selection Initialisierung...');
+            
+            setTimeout(() => {
+                if (window.raceSelection) {
+                    log('✅ Race Selection verfügbar');
+                    log('🔍 Verfügbare Rassen: ' + (window.LOADED_RACES ? window.LOADED_RACES.length : 0));
+                    log('🔍 Fallback Rassen: ' + (window.FALLBACK_RACES ? window.FALLBACK_RACES.length : 0));
+                } else {
+                    log('❌ Race Selection nicht verfügbar');
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

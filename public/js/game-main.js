@@ -242,10 +242,11 @@ class GameController {
         // Simuliere Spielstart
         this.setGamePhase('race_selection');
         
-        // Starte Rassenauswahl
+        // Starte Rassenauswahl mit Verzögerung
         setTimeout(() => {
+            console.log('🤖 Demo-Modus: Starte Rassenauswahl...');
             this.startRaceSelection();
-        }, 500);
+        }, 1000);
     }
 
     setGamePhase(phase) {
@@ -366,6 +367,17 @@ class GameController {
             if (this.raceSelection && typeof this.raceSelection.show === 'function') {
                 console.log('🔍 Zeige Race Selection Modal');
                 this.raceSelection.show();
+                
+                // Zusätzliche Überprüfung
+                setTimeout(() => {
+                    if (this.raceSelection.isVisible()) {
+                        console.log('✅ Race Selection Modal ist sichtbar');
+                    } else {
+                        console.error('❌ Race Selection Modal ist nicht sichtbar!');
+                        // Versuche es nochmal
+                        this.raceSelection.show();
+                    }
+                }, 200);
             } else {
                 console.error('❌ Race Selection show() Methode nicht verfügbar');
                 console.log('🔍 raceSelection Objekt:', this.raceSelection);
