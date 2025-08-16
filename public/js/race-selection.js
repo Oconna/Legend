@@ -45,6 +45,13 @@ class RaceSelection {
             return;
         }
         
+        // Stelle sicher, dass das Modal standardmäßig versteckt ist
+        this.modal.style.display = 'none';
+        this.modal.style.visibility = 'hidden';
+        this.modal.style.opacity = '0';
+        this.modal.setAttribute('aria-hidden', 'true');
+        this.modal.classList.remove('show');
+        
         this.setupEventListeners();
         this.setupGameStateListeners();
         
@@ -53,7 +60,27 @@ class RaceSelection {
             this.renderRaces();
         }, 100);
         
+        // Debug: Zeige Modal-Status
+        console.log('🔍 Race Selection Modal Status nach Initialisierung:');
+        console.log('🔍 Modal Element:', this.modal);
+        console.log('🔍 Modal Display:', this.modal.style.display);
+        console.log('🔍 Modal Visibility:', this.modal.style.visibility);
+        console.log('🔍 Modal Opacity:', this.modal.style.opacity);
+        console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
+        console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
+        
         console.log('✅ Race Selection initialisiert');
+        
+        // Test: Zeige Modal kurz an und verstecke es wieder
+        setTimeout(() => {
+            console.log('🧪 Test: Zeige Modal kurz an...');
+            this.showModal();
+            
+            setTimeout(() => {
+                console.log('🧪 Test: Verstecke Modal wieder...');
+                this.hideModal();
+            }, 1000);
+        }, 500);
     }
 
     setupEventListeners() {
@@ -414,17 +441,13 @@ class RaceSelection {
         
         console.log('🔍 Zeige Race Selection Modal');
         console.log('🔍 Modal Element:', this.modal);
-        console.log('🔍 Modal display vorher:', this.modal.style.display);
         
         // Stelle sicher, dass das Modal sichtbar ist
         this.modal.style.display = 'flex';
         this.modal.style.visibility = 'visible';
         this.modal.style.opacity = '1';
         this.modal.setAttribute('aria-hidden', 'false');
-        
-        console.log('🔍 Modal display nachher:', this.modal.style.display);
-        console.log('🔍 Modal visibility:', this.modal.style.visibility);
-        console.log('🔍 Modal opacity:', this.modal.style.opacity);
+        this.modal.classList.add('show');
         
         // Render races if not already done
         if (this.racesGrid && this.racesGrid.children.length === 0) {
@@ -444,19 +467,18 @@ class RaceSelection {
         // Disable body scroll
         document.body.style.overflow = 'hidden';
         
-        // Zusätzliche Überprüfung nach kurzer Verzögerung
-        setTimeout(() => {
-            if (this.modal.style.display === 'flex') {
-                console.log('✅ Race Selection Modal ist sichtbar');
-            } else {
-                console.error('❌ Race Selection Modal ist nicht sichtbar!');
-                console.log('🔍 Aktueller display Wert:', this.modal.style.display);
-                // Versuche es nochmal
-                this.modal.style.display = 'flex';
-            }
-        }, 100);
-        
         console.log('✅ Race Selection Modal sollte jetzt sichtbar sein');
+        
+        // Debug: Zeige Modal-Status nach dem Anzeigen
+        setTimeout(() => {
+            console.log('🔍 Race Selection Modal Status nach dem Anzeigen:');
+            console.log('🔍 Modal Display:', this.modal.style.display);
+            console.log('🔍 Modal Visibility:', this.modal.style.visibility);
+            console.log('🔍 Modal Opacity:', this.modal.style.opacity);
+            console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
+            console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
+            console.log('🔍 Modal ist sichtbar:', this.isModalVisible());
+        }, 50);
     }
 
     hideModal() {
@@ -465,14 +487,39 @@ class RaceSelection {
         console.log('❌ Verstecke Race Selection Modal');
         
         this.modal.style.display = 'none';
+        this.modal.style.visibility = 'hidden';
+        this.modal.style.opacity = '0';
         this.modal.setAttribute('aria-hidden', 'true');
+        this.modal.classList.remove('show');
         
         // Re-enable body scroll
         document.body.style.overflow = '';
+        
+        // Debug: Zeige Modal-Status nach dem Verstecken
+        console.log('🔍 Race Selection Modal Status nach dem Verstecken:');
+        console.log('🔍 Modal Display:', this.modal.style.display);
+        console.log('🔍 Modal Visibility:', this.modal.style.visibility);
+        console.log('🔍 Modal Opacity:', this.modal.style.opacity);
+        console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
+        console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
+        console.log('🔍 Modal ist sichtbar:', this.isModalVisible());
     }
 
     isModalVisible() {
-        return this.modal && this.modal.style.display === 'flex';
+        if (!this.modal) return false;
+        
+        const isVisible = this.modal.style.display === 'flex' || 
+                         this.modal.classList.contains('show') || 
+                         this.modal.getAttribute('aria-hidden') === 'false';
+        
+        console.log('🔍 Modal Sichtbarkeit geprüft:', {
+            display: this.modal.style.display,
+            hasShowClass: this.modal.classList.contains('show'),
+            ariaHidden: this.modal.getAttribute('aria-hidden'),
+            isVisible: isVisible
+        });
+        
+        return isVisible;
     }
 
     updateStatus(message) {

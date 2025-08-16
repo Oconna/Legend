@@ -196,6 +196,12 @@ body {
     opacity: 1 !important;
 }
 
+.race-selection-modal.show {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
 .race-selection-content {
     background: linear-gradient(135deg, #2c3e50, #34495e);
     padding: 30px;

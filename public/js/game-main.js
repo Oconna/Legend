@@ -109,6 +109,19 @@ class GameController {
                 window.raceSelection = new window.RaceSelection();
                 this.raceSelection = window.raceSelection;
                 console.log('🏛️ Race Selection initialisiert');
+                
+                // Test: Zeige Modal kurz an und verstecke es wieder
+                setTimeout(() => {
+                    console.log('🧪 Game Controller Test: Zeige Modal kurz an...');
+                    if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+                        this.raceSelection.show();
+                        
+                        setTimeout(() => {
+                            console.log('🧪 Game Controller Test: Verstecke Modal wieder...');
+                            this.raceSelection.hide();
+                        }, 1000);
+                    }
+                }, 1000);
             } catch (error) {
                 console.error('❌ Fehler beim Initialisieren der Race Selection:', error);
             }
@@ -242,11 +255,23 @@ class GameController {
         // Simuliere Spielstart
         this.setGamePhase('race_selection');
         
-        // Starte Rassenauswahl mit Verzögerung
-        setTimeout(() => {
-            console.log('🤖 Demo-Modus: Starte Rassenauswahl...');
-            this.startRaceSelection();
-        }, 1000);
+        // Starte Rassenauswahl sofort
+        console.log('🤖 Demo-Modus: Starte Rassenauswahl...');
+        this.startRaceSelection();
+        
+        // Ensure modal is shown
+        if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+            this.raceSelection.show();
+            
+            // Verify modal is visible
+            setTimeout(() => {
+                if (this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in startDemoMode sichtbar');
+                } else {
+                    console.log('❌ Race Selection Modal ist in startDemoMode nicht sichtbar');
+                }
+            }, 50);
+        }
     }
 
     setGamePhase(phase) {
@@ -258,6 +283,57 @@ class GameController {
         
         // Update UI based on phase
         this.updateUIForPhase(phase);
+        
+        // Handle race selection phase specifically
+        if (phase === 'race_selection' && this.raceSelection && typeof this.raceSelection.show === 'function') {
+            console.log('🏛️ setGamePhase: Zeige Race Selection Modal...');
+            this.raceSelection.show();
+            
+            // Verify modal is visible
+            setTimeout(() => {
+                if (this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in setGamePhase sichtbar');
+                } else {
+                    console.log('❌ Race Selection Modal ist in setGamePhase nicht sichtbar');
+                }
+            }, 50);
+        } else if (phase === 'playing' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🎮 setGamePhase: Verstecke Race Selection Modal...');
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in setGamePhase versteckt');
+                } else {
+                    console.log('❌ Race Selection Modal ist in setGamePhase noch sichtbar');
+                }
+            }, 50);
+        } else if (phase === 'lobby' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🚪 setGamePhase: Verstecke Race Selection Modal (Lobby)...');
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in setGamePhase versteckt (Lobby)');
+                } else {
+                    console.log('❌ Race Selection Modal ist in setGamePhase noch sichtbar (Lobby)');
+                }
+            }, 50);
+        } else if (phase === 'finished' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🏁 setGamePhase: Verstecke Race Selection Modal (Finished)...');
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in setGamePhase versteckt (Finished)');
+                } else {
+                    console.log('❌ Race Selection Modal ist in setGamePhase noch sichtbar (Finished)');
+                }
+            }, 50);
+        }
     }
 
     updateUIForPhase(phase) {
@@ -273,6 +349,11 @@ class GameController {
                 }
                 if (endTurnBtn) endTurnBtn.disabled = true;
                 if (timerDisplay) timerDisplay.style.display = 'none';
+                
+                // Ensure race selection modal is hidden
+                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+                    this.raceSelection.hide();
+                }
                 break;
                 
             case 'race_selection':
@@ -289,6 +370,22 @@ class GameController {
                     raceStatusPanel.style.display = 'block';
                     this.updateRaceStatusPanel();
                 }
+                
+                        // Ensure race selection modal is shown
+        if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+            this.raceSelection.show();
+            
+            // Verify modal is visible
+            setTimeout(() => {
+                if (this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in updateUIForPhase sichtbar');
+                } else {
+                    console.log('❌ Race Selection Modal ist in updateUIForPhase nicht sichtbar');
+                }
+            }, 50);
+        } else {
+            console.log('❌ Race Selection nicht verfügbar in updateUIForPhase');
+        }
                 break;
                 
             case 'playing':
@@ -302,6 +399,11 @@ class GameController {
                     raceStatusPanel2.style.display = 'none';
                 }
                 
+                // Ensure race selection modal is hidden
+                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+                    this.raceSelection.hide();
+                }
+                
                 this.updateTurnUI();
                 break;
                 
@@ -309,6 +411,11 @@ class GameController {
                 if (turnIndicator) turnIndicator.textContent = '🏁 Spiel beendet';
                 if (endTurnBtn) endTurnBtn.disabled = true;
                 if (timerDisplay) timerDisplay.style.display = 'none';
+                
+                // Ensure race selection modal is hidden
+                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+                    this.raceSelection.hide();
+                }
                 break;
         }
     }
@@ -362,28 +469,25 @@ class GameController {
             this.raceSelection = window.raceSelection;
         }
         
-        // Show race selection modal
-        setTimeout(() => {
-            if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-                console.log('🔍 Zeige Race Selection Modal');
-                this.raceSelection.show();
-                
-                // Zusätzliche Überprüfung
-                setTimeout(() => {
-                    if (this.raceSelection.isVisible()) {
-                        console.log('✅ Race Selection Modal ist sichtbar');
-                    } else {
-                        console.error('❌ Race Selection Modal ist nicht sichtbar!');
-                        // Versuche es nochmal
-                        this.raceSelection.show();
-                    }
-                }, 200);
-            } else {
-                console.error('❌ Race Selection show() Methode nicht verfügbar');
-                console.log('🔍 raceSelection Objekt:', this.raceSelection);
-                this.showError('Rassen-Auswahl kann nicht angezeigt werden');
-            }
-        }, 500);
+        // Show race selection modal immediately
+        if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+            console.log('🔍 Zeige Race Selection Modal');
+            this.raceSelection.show();
+            
+            // Ensure modal is visible
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('🔍 Modal nicht sichtbar, versuche es nochmal...');
+                    this.raceSelection.show();
+                } else {
+                    console.log('✅ Race Selection Modal ist sichtbar');
+                }
+            }, 100);
+        } else {
+            console.error('❌ Race Selection show() Methode nicht verfügbar');
+            console.log('🔍 raceSelection Objekt:', this.raceSelection);
+            this.showError('Rassen-Auswahl kann nicht angezeigt werden');
+        }
     }
 
     updateRaceStatusPanel() {
@@ -429,6 +533,20 @@ class GameController {
 
     startPlayingPhase() {
         console.log('🎮 Starte Spielphase...');
+        
+        // Hide race selection modal first
+        if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in startPlayingPhase versteckt');
+                } else {
+                    console.log('❌ Race Selection Modal ist in startPlayingPhase noch sichtbar');
+                }
+            }, 50);
+        }
         
         this.setGamePhase('playing');
         
@@ -661,6 +779,46 @@ class GameController {
     onGamePhaseChanged(data) {
         console.log('🔄 Spielphase geändert:', data);
         this.updateUIForPhase(data.newValue);
+        
+        // Handle specific phase changes
+        const newPhase = data.newValue;
+        switch (newPhase) {
+            case 'race_selection':
+                console.log('🏛️ Rassen-Auswahl Phase gestartet');
+                if (this.raceSelection && typeof this.raceSelection.show === 'function') {
+                    this.raceSelection.show();
+                    
+                    // Verify modal is visible
+                    setTimeout(() => {
+                        if (this.raceSelection.isModalVisible()) {
+                            console.log('✅ Race Selection Modal ist in onGamePhaseChanged sichtbar');
+                        } else {
+                            console.log('❌ Race Selection Modal ist in onGamePhaseChanged nicht sichtbar');
+                        }
+                    }, 50);
+                }
+                break;
+                
+            case 'playing':
+                console.log('🎮 Spielphase gestartet');
+                if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
+                    this.raceSelection.hide();
+                    
+                    // Verify modal is hidden
+                    setTimeout(() => {
+                        if (!this.raceSelection.isModalVisible()) {
+                            console.log('✅ Race Selection Modal ist in onGamePhaseChanged versteckt');
+                        } else {
+                            console.log('❌ Race Selection Modal ist in onGamePhaseChanged noch sichtbar');
+                        }
+                    }, 50);
+                }
+                break;
+                
+            case 'finished':
+                console.log('🏁 Spiel beendet');
+                break;
+        }
     }
 
     onTurnChanged(data) {
@@ -697,8 +855,17 @@ class GameController {
         console.log('🏛️ Alle Rassen ausgewählt:', data);
         
         // Hide race selection
-        if (this.raceSelection) {
+        if (this.raceSelection && typeof this.raceSelection.hide === 'function') {
             this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in onAllRacesSelected versteckt');
+                } else {
+                    console.log('❌ Race Selection Modal ist in onAllRacesSelected noch sichtbar');
+                }
+            }, 50);
         }
         
         // Start playing phase
@@ -717,6 +884,53 @@ class GameController {
     onServerPhaseChanged(data) {
         console.log('📡 Server Phasen-Änderung:', data);
         this.setGamePhase(data.phase);
+        
+        // Handle race selection phase specifically
+        if (data.phase === 'race_selection' && this.raceSelection && typeof this.raceSelection.show === 'function') {
+            this.raceSelection.show();
+            
+            // Verify modal is visible
+            setTimeout(() => {
+                if (this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in onServerPhaseChanged sichtbar');
+                } else {
+                    console.log('❌ Race Selection Modal ist in onServerPhaseChanged nicht sichtbar');
+                }
+            }, 50);
+        } else if (data.phase === 'playing' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in onServerPhaseChanged versteckt');
+                } else {
+                    console.log('❌ Race Selection Modal ist in onServerPhaseChanged noch sichtbar');
+                }
+            }, 50);
+        } else if (data.phase === 'lobby' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in onServerPhaseChanged versteckt (Lobby)');
+                } else {
+                    console.log('❌ Race Selection Modal ist in onServerPhaseChanged noch sichtbar (Lobby)');
+                }
+            }, 50);
+        } else if (data.phase === 'finished' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            this.raceSelection.hide();
+            
+            // Verify modal is hidden
+            setTimeout(() => {
+                if (!this.raceSelection.isModalVisible()) {
+                    console.log('✅ Race Selection Modal ist in onServerPhaseChanged versteckt (Finished)');
+                } else {
+                    console.log('❌ Race Selection Modal ist in onServerPhaseChanged noch sichtbar (Finished)');
+                }
+            }, 50);
+        }
     }
 
     onTurnStarted(data) {
