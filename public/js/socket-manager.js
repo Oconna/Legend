@@ -260,7 +260,17 @@ class SocketManager {
 
     onGameStateFailed(data) {
         console.error('❌ Spielstand konnte nicht geladen werden:', data.error);
+        
+        // Don't show error notification for "Spiel nicht gefunden" during initial setup
+        if (data.error === 'Spiel nicht gefunden' && !this.gameStateRequested) {
+            console.warn('⚠️ Spiel noch nicht auf Server verfügbar, das ist normal beim Start');
+            return;
+        }
+        
         this.showNotification(`Spielstand konnte nicht geladen werden: ${data.error}`, 'error');
+        
+        // Dispatch event for game controller to handle
+        window.dispatchEvent(new CustomEvent('gameStateFailed', { detail: data }));
     }
 
     onRaceSelected(data) {

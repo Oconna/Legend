@@ -115,13 +115,24 @@ class GameController {
                 }
                 
                 // Check if race selection is already initialized
-                if (window.raceSelection) {
+                if (window.raceSelection && window.raceSelection.isInitialized) {
                     console.log('🏛️ Race Selection bereits initialisiert, verwende bestehende Instanz');
                     this.raceSelection = window.raceSelection;
                 } else {
                     console.log('🏛️ Erstelle neue Race Selection Instanz...');
                     window.raceSelection = new window.RaceSelection();
                     this.raceSelection = window.raceSelection;
+                    
+                    // Wait for race selection to be fully initialized
+                    const checkInit = () => {
+                        if (this.raceSelection && this.raceSelection.isInitialized) {
+                            console.log('✅ Race Selection vollständig initialisiert');
+                        } else {
+                            console.log('⏳ Race Selection noch nicht bereit, warte...');
+                            setTimeout(checkInit, 100);
+                        }
+                    };
+                    checkInit();
                 }
                 
                 console.log('🏛️ Race Selection initialisiert:', this.raceSelection);
@@ -194,6 +205,7 @@ class GameController {
         window.addEventListener('allRacesSelected', (e) => this.onAllRacesSelected(e.detail));
         window.addEventListener('unitPurchased', (e) => this.onUnitPurchased(e.detail));
         window.addEventListener('endTurnRequested', () => this.endTurn());
+        window.addEventListener('gameStateFailed', (e) => this.onGameStateFailed(e.detail));
         
         console.log('🎯 Event Handler eingerichtet');
     }
@@ -249,7 +261,7 @@ class GameController {
         // The socket manager will automatically join the game when connected
         console.log('⏳ Warte auf Spielbeitritt...');
         
-        // Demo-Modus: Wenn nach 5 Sekunden keine Server-Verbindung, starte automatisch
+        // Demo-Modus: Wenn nach 8 Sekunden keine Server-Verbindung, starte automatisch
         setTimeout(() => {
             if (!this.socketManager || !this.socketManager.socket || !this.socketManager.socket.connected) {
                 console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
@@ -259,7 +271,7 @@ class GameController {
                 console.log('🤖 Demo-Modus: Verbunden aber kein Spiel beigetreten, starte automatisch...');
                 this.startDemoMode();
             }
-        }, 5000); // Increased delay from 3000ms to 5000ms
+        }, 8000); // Increased delay to give more time for server connection
     }
 
     startDemoMode() {
@@ -286,7 +298,7 @@ class GameController {
                 } else {
                     console.error('🤖 Demo-Modus: Race Selection nicht bereit');
                 }
-            }, 500);
+            }, 1000); // Increased delay to ensure proper initialization
         } else {
             console.error('🤖 Demo-Modus: Race Selection Modal kann nicht angezeigt werden');
         }
@@ -462,14 +474,20 @@ class GameController {
         // Ensure race selection is properly initialized
         if (!this.raceSelection || !this.raceSelection.isInitialized) {
             console.warn('⚠️ Race Selection noch nicht vollständig initialisiert, warte...');
-            setTimeout(() => this.startRaceSelection(), 500);
+            setTimeout(() => this.startRaceSelection(), 1000); // Increased delay
             return;
         }
         
-        // Show race selection modal immediately
+        // Show race selection modal with a small delay to ensure everything is ready
         if (this.raceSelection && typeof this.raceSelection.show === 'function') {
             console.log('🔍 Zeige Race Selection Modal');
-            this.raceSelection.show();
+            setTimeout(() => {
+                if (this.raceSelection && this.raceSelection.isInitialized) {
+                    this.raceSelection.show();
+                } else {
+                    console.error('❌ Race Selection nicht mehr bereit beim Anzeigen');
+                }
+            }, 500); // Increased delay to ensure proper initialization
         } else {
             console.error('❌ Race Selection show() Methode nicht verfügbar');
             console.log('🔍 raceSelection Objekt:', this.raceSelection);
@@ -485,7 +503,7 @@ class GameController {
         let html = '';
         
         players.forEach(player => {
-            const hasSelected = this.gameState.data.otherPlayersRaces.has(player.name);
+            let hasSelected = this.gameState.data.otherPlayersRaces.has(player.name);
             const raceId = this.gameState.data.otherPlayersRaces.get(player.name);
             let raceName = 'Wählt...';
             
@@ -512,6 +530,48 @@ class GameController {
         });
         
         raceStatusList.innerHTML = html;
+    }
+
+    checkIfAllRacesSelected() {
+        const players = this.gameSettings?.players || [];
+        const totalPlayers = players.length;
+        let selectedCount = 0;
+        
+        // Count players who have selected races
+        players.forEach(player => {
+            if (player.name === this.gameState.currentPlayer?.name) {
+                // Current player
+                if (this.gameState.selectedRace) {
+                    selectedCount++;
+                }
+            } else {
+                // Other players
+                if (this.gameState.data.otherPlayersRaces.has(player.name)) {
+                    selectedCount++;
+                }
+            }
+        });
+        
+        console.log(`🏛️ Rassen-Auswahl Status: ${selectedCount}/${totalPlayers} Spieler haben gewählt`);
+        
+        // If all players have selected races, start the game
+        if (selectedCount === totalPlayers) {
+            console.log('🎯 Alle Rassen gewählt! Starte Spiel...');
+            
+            // Dispatch event for other components
+            window.dispatchEvent(new CustomEvent('allRacesSelected', {
+                detail: { 
+                    message: 'Alle Rassen gewählt',
+                    totalPlayers: totalPlayers,
+                    selectedCount: selectedCount
+                }
+            }));
+            
+            // Start the game after a short delay
+            setTimeout(() => {
+                this.startPlayingPhase();
+            }, 1000);
+        }
     }
 
     // ========================================
@@ -834,9 +894,8 @@ class GameController {
             this.socketManager.selectRace(this.gameState.selectedRace.id);
         }
         
-        // Start map generation and switch to playing phase
-        console.log('🎮 Rasse bestätigt, starte Kartengenerierung...');
-        this.startPlayingPhase();
+        // Check if all players have selected races
+        this.checkIfAllRacesSelected();
     }
 
     onAllRacesSelected(data) {
@@ -848,8 +907,13 @@ class GameController {
             this.mapSystem.loadServerMap(data.map);
         }
         
-        // Start playing phase with map generation
-        setTimeout(() => this.startPlayingPhase(), 1000);
+        // Only start playing phase if we're not already in it
+        if (this.gamePhase !== 'playing') {
+            console.log('🎮 Starte Spielphase von onAllRacesSelected...');
+            setTimeout(() => this.startPlayingPhase(), 1000);
+        } else {
+            console.log('🎮 Spielphase läuft bereits, überspringe Start...');
+        }
     }
 
     onGameJoined(data) {
