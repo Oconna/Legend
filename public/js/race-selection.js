@@ -60,27 +60,22 @@ class RaceSelection {
             this.renderRaces();
         }, 100);
         
-        // Debug: Zeige Modal-Status
-        console.log('🔍 Race Selection Modal Status nach Initialisierung:');
-        console.log('🔍 Modal Element:', this.modal);
-        console.log('🔍 Modal Display:', this.modal.style.display);
-        console.log('🔍 Modal Visibility:', this.modal.style.visibility);
-        console.log('🔍 Modal Opacity:', this.modal.style.opacity);
-        console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
-        console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
+
         
         console.log('✅ Race Selection initialisiert');
         
-        // Test: Zeige Modal kurz an und verstecke es wieder
-        setTimeout(() => {
-            console.log('🧪 Test: Zeige Modal kurz an...');
-            this.showModal();
-            
+        // Test: Zeige Modal kurz an und verstecke es wieder (nur im Debug-Modus)
+        if (window.location.href.includes('test-race-selection.html')) {
             setTimeout(() => {
-                console.log('🧪 Test: Verstecke Modal wieder...');
-                this.hideModal();
-            }, 1000);
-        }, 500);
+                console.log('🧪 Test: Zeige Modal kurz an...');
+                this.showModal();
+                
+                setTimeout(() => {
+                    console.log('🧪 Test: Verstecke Modal wieder...');
+                    this.hideModal();
+                }, 1000);
+            }, 500);
+        }
     }
 
     setupEventListeners() {
@@ -469,16 +464,7 @@ class RaceSelection {
         
         console.log('✅ Race Selection Modal sollte jetzt sichtbar sein');
         
-        // Debug: Zeige Modal-Status nach dem Anzeigen
-        setTimeout(() => {
-            console.log('🔍 Race Selection Modal Status nach dem Anzeigen:');
-            console.log('🔍 Modal Display:', this.modal.style.display);
-            console.log('🔍 Modal Visibility:', this.modal.style.visibility);
-            console.log('🔍 Modal Opacity:', this.modal.style.opacity);
-            console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
-            console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
-            console.log('🔍 Modal ist sichtbar:', this.isModalVisible());
-        }, 50);
+
     }
 
     hideModal() {
@@ -495,14 +481,7 @@ class RaceSelection {
         // Re-enable body scroll
         document.body.style.overflow = '';
         
-        // Debug: Zeige Modal-Status nach dem Verstecken
-        console.log('🔍 Race Selection Modal Status nach dem Verstecken:');
-        console.log('🔍 Modal Display:', this.modal.style.display);
-        console.log('🔍 Modal Visibility:', this.modal.style.visibility);
-        console.log('🔍 Modal Opacity:', this.modal.style.opacity);
-        console.log('🔍 Modal Aria-Hidden:', this.modal.getAttribute('aria-hidden'));
-        console.log('🔍 Modal Show Class:', this.modal.classList.contains('show'));
-        console.log('🔍 Modal ist sichtbar:', this.isModalVisible());
+
     }
 
     isModalVisible() {
@@ -512,12 +491,7 @@ class RaceSelection {
                          this.modal.classList.contains('show') || 
                          this.modal.getAttribute('aria-hidden') === 'false';
         
-        console.log('🔍 Modal Sichtbarkeit geprüft:', {
-            display: this.modal.style.display,
-            hasShowClass: this.modal.classList.contains('show'),
-            ariaHidden: this.modal.getAttribute('aria-hidden'),
-            isVisible: isVisible
-        });
+
         
         return isVisible;
     }
@@ -559,9 +533,6 @@ class RaceSelection {
 
     show() {
         console.log('🔍 RaceSelection.show() aufgerufen');
-        console.log('🔍 Modal Element:', this.modal);
-        console.log('🔍 Races Grid:', this.racesGrid);
-        console.log('🔍 Confirm Button:', this.confirmBtn);
         
         if (!this.modal) {
             console.error('❌ Modal nicht gefunden!');
@@ -577,9 +548,7 @@ class RaceSelection {
     }
 
     isVisible() {
-        const isVisible = this.isModalVisible();
-        console.log('🔍 Race Selection sichtbar?', isVisible);
-        return isVisible;
+        return this.isModalVisible();
     }
 
     reset() {
@@ -627,12 +596,7 @@ if (typeof window !== 'undefined') {
             raceSelection = new RaceSelection();
             window.raceSelection = raceSelection;
             
-            // Debug-Informationen
-            setTimeout(() => {
-                if (raceSelection) {
-                    raceSelection.debug();
-                }
-            }, 1000);
+            
         }
     });
     
