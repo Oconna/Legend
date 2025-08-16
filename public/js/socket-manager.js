@@ -67,6 +67,7 @@ class SocketManager {
         this.socket.on('race-selection-phase', (data) => this.onRaceSelectionPhase(data));
         this.socket.on('all-races-selected', (data) => this.onAllRacesSelected(data));
         this.socket.on('game-phase-changed', (data) => this.onGamePhaseChanged(data));
+        this.socket.on('game-joined', (data) => this.onGameJoined(data));
         
         // Game state events
         this.socket.on('game-state', (data) => this.onGameState(data));
@@ -109,6 +110,15 @@ class SocketManager {
             gameState.setConnectionStatus(true);
         }
         this.showNotification('Mit Server verbunden!', 'success');
+        
+        // Automatically join the game if we have game settings
+        if (window.gameState && gameState.data.gameSettings && gameState.data.gameSettings.gameId) {
+            console.log('🎮 Automatisch Spiel beitreten...');
+            this.emit('join-game', {
+                gameId: gameState.data.gameSettings.gameId,
+                player: gameState.data.gameSettings.currentPlayer
+            });
+        }
         
         // Request current game state if in a game
         if (window.gameState && gameState.data.gameSettings && gameState.data.gameSettings.gameId) {
@@ -297,6 +307,19 @@ class SocketManager {
         
         const isFirstPlayer = data.currentPlayer === (window.gameState ? gameState.currentPlayer.name : null);
         this.showGameStartMessage(data, isFirstPlayer);
+    }
+
+    onGameJoined(data) {
+        console.log('🎉 Spiel erfolgreich beigetreten:', data);
+        this.showNotification('Spiel erfolgreich beigetreten!', 'success');
+        
+        // Update game state if available
+        if (window.gameState && data.game) {
+            gameState.updateFromServer(data.game);
+        }
+        
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('gameJoined', { detail: data }));
     }
 
     // ========================================

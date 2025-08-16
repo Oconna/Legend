@@ -187,6 +187,7 @@ class GameController {
         
         // Window events
         window.addEventListener('beforeunload', () => this.cleanup());
+        window.addEventListener('gameJoined', (e) => this.onGameJoined(e.detail));
         
         // Custom game events
         window.addEventListener('raceConfirmed', (e) => this.onRaceConfirmed(e.detail));
@@ -244,13 +245,9 @@ class GameController {
         // Wait for server to start the game
         this.setGamePhase('lobby');
         
-        // Request current game state from server with longer delay to ensure game is ready
-        if (this.socketManager) {
-            setTimeout(() => {
-                console.log('📡 Fordere Spielstand vom Server an...');
-                this.socketManager.requestGameState();
-            }, 2000); // Increased delay from 1000ms to 2000ms
-        }
+        // Don't request game state immediately - wait for gameJoined event
+        // The socket manager will automatically join the game when connected
+        console.log('⏳ Warte auf Spielbeitritt...');
         
         // Demo-Modus: Wenn nach 5 Sekunden keine Server-Verbindung, starte automatisch
         setTimeout(() => {
@@ -833,6 +830,15 @@ class GameController {
         setTimeout(() => this.startPlayingPhase(), 1000);
     }
 
+    onGameJoined(data) {
+        console.log('🎉 Spieler hat das Spiel beigetreten:', data);
+        this.updatePlayerDisplay();
+        this.updateRaceStatusPanel();
+        this.updateMapInfo();
+        this.updateUnitsOverview();
+        this.startPlayingPhase(); // Start the game flow after joining
+    }
+
     // ========================================
     // SERVER EVENT HANDLERS
     // ========================================
@@ -863,6 +869,24 @@ class GameController {
                 }
             }, 1000);
         }
+    }
+
+    onGameJoined(data) {
+        console.log('🎉 Spieler hat das Spiel beigetreten:', data);
+        
+        // Now that we've joined the game, we can request the current game state
+        if (this.socketManager) {
+            setTimeout(() => {
+                console.log('📡 Fordere Spielstand vom Server an...');
+                this.socketManager.requestGameState();
+            }, 1000); // Small delay to ensure server is ready
+        }
+        
+        // Update UI
+        this.updatePlayerDisplay();
+        this.updateRaceStatusPanel();
+        this.updateMapInfo();
+        this.updateUnitsOverview();
     }
 
     onRaceSelectionPhase(data) {
