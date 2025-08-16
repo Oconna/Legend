@@ -64,7 +64,7 @@ class SocketManager {
 
         // Game flow events
         this.socket.on('game-started', (data) => this.onGameStarted(data));
-        this.socket.on('race-selection-phase', () => this.onRaceSelectionPhase());
+        this.socket.on('race-selection-phase', (data) => this.onRaceSelectionPhase(data));
         this.socket.on('all-races-selected', (data) => this.onAllRacesSelected(data));
         this.socket.on('game-phase-changed', (data) => this.onGamePhaseChanged(data));
         
@@ -172,29 +172,56 @@ class SocketManager {
     // ========================================
 
     onGameStarted(data) {
-        console.log('🎮 Spiel vom Server gestartet:', data);
+        console.log('🎮 Spiel gestartet:', data);
+        
+        // Update game state
         if (window.gameState) {
             gameState.setGamePhase('race_selection');
         }
         
-        // Trigger race selection modal with map data
-        window.dispatchEvent(new CustomEvent('showRaceSelection'));
+        // Ensure race selection is ready before dispatching event
+        if (window.raceSelection && window.raceSelection.isInitialized) {
+            console.log('🏛️ Race Selection bereit, dispatche showRaceSelection Event');
+            window.dispatchEvent(new CustomEvent('showRaceSelection'));
+        } else {
+            console.warn('⚠️ Race Selection nicht bereit, warte...');
+            setTimeout(() => {
+                if (window.raceSelection && window.raceSelection.isInitialized) {
+                    console.log('🏛️ Race Selection jetzt bereit, dispatche showRaceSelection Event');
+                    window.dispatchEvent(new CustomEvent('showRaceSelection'));
+                } else {
+                    console.error('❌ Race Selection immer noch nicht bereit');
+                }
+            }, 1000);
+        }
         
-        // If map data is available, trigger map loading
+        // Dispatch gameStarted event with map data if available
         if (data.map) {
-            console.log('🗺️ Karte vom Server erhalten, lade in Map System...');
             window.dispatchEvent(new CustomEvent('gameStarted', { detail: data }));
         }
-        
-        this.showNotification('Spiel gestartet! Wähle deine Rasse.', 'info');
     }
 
-    onRaceSelectionPhase() {
-        console.log('🏛️ Rassen-Auswahl Phase beginnt');
+    onRaceSelectionPhase(data) {
+        console.log('🏛️ Rassen-Auswahl Phase beginnt', data);
         if (window.gameState) {
             gameState.setGamePhase('race_selection');
         }
-        window.dispatchEvent(new CustomEvent('showRaceSelection'));
+        
+        // Ensure race selection is ready before dispatching event
+        if (window.raceSelection && window.raceSelection.isInitialized) {
+            console.log('🏛️ Race Selection bereit, dispatche showRaceSelection Event');
+            window.dispatchEvent(new CustomEvent('showRaceSelection'));
+        } else {
+            console.warn('⚠️ Race Selection nicht bereit, warte...');
+            setTimeout(() => {
+                if (window.raceSelection && window.raceSelection.isInitialized) {
+                    console.log('🏛️ Race Selection jetzt bereit, dispatche showRaceSelection Event');
+                    window.dispatchEvent(new CustomEvent('showRaceSelection'));
+                } else {
+                    console.error('❌ Race Selection immer noch nicht bereit');
+                }
+            }, 1000);
+        }
     }
 
     onGamePhaseChanged(data) {
@@ -446,6 +473,23 @@ class SocketManager {
     }
 
     requestGameState() {
+        if (!window.gameState) {
+            console.warn('⚠️ GameState nicht verfügbar');
+            return false;
+        }
+        
+        if (!gameState.data.gameSettings) {
+            console.warn('⚠️ Keine Spiel-Einstellungen verfügbar');
+            return false;
+        }
+        
+        if (!gameState.data.gameSettings.gameId) {
+            console.warn('⚠️ Keine Game ID verfügbar');
+            return false;
+        }
+        
+        console.log('📡 Fordere Spielstand an für Game ID:', gameState.data.gameSettings.gameId);
+        
         if (window.gameState && gameState.data.gameSettings && gameState.data.gameSettings.gameId) {
             return this.emit('get-game-state', {
                 gameId: gameState.data.gameSettings.gameId

@@ -14,6 +14,7 @@ class RaceSelection {
         this.statusDisplay = document.getElementById('raceSelectionStatus');
         this.selectedRaceId = null;
         this.isProcessing = false;
+        this.isInitialized = false;
         
         this.init();
     }
@@ -58,6 +59,8 @@ class RaceSelection {
         // Warte kurz und rendere dann die Rassen
         setTimeout(() => {
             this.renderRaces();
+            this.isInitialized = true;
+            console.log('✅ Race Selection vollständig initialisiert');
         }, 100);
         
 
@@ -97,7 +100,15 @@ class RaceSelection {
         }
 
         // Custom Events
-        window.addEventListener('showRaceSelection', () => this.showModal());
+        window.addEventListener('showRaceSelection', () => {
+            console.log('🔍 showRaceSelection Event erhalten');
+            if (this.isInitialized) {
+                this.showModal();
+            } else {
+                console.warn('⚠️ Race Selection noch nicht initialisiert, warte...');
+                setTimeout(() => this.showModal(), 500);
+            }
+        });
         window.addEventListener('hideRaceSelection', () => this.hideModal());
         window.addEventListener('raceSelectionUpdate', (e) => this.handleRaceUpdate(e.detail));
         window.addEventListener('raceSelectionFailed', (e) => this.handleSelectionFailed(e.detail));
@@ -143,6 +154,7 @@ class RaceSelection {
         console.log('🔍 Verfügbare Rassen:', availableRaces);
         console.log('🔍 LOADED_RACES:', window.LOADED_RACES);
         console.log('🔍 FALLBACK_RACES:', window.FALLBACK_RACES);
+        console.log('🔍 availableRaces.length:', availableRaces.length);
         
         if (availableRaces.length === 0) {
             console.error('❌ Keine Rassen verfügbar');
@@ -436,6 +448,16 @@ class RaceSelection {
         
         console.log('🔍 Zeige Race Selection Modal');
         console.log('🔍 Modal Element:', this.modal);
+        console.log('🔍 Modal Display Style vorher:', this.modal.style.display);
+        console.log('🔍 Modal Visibility Style vorher:', this.modal.style.visibility);
+        console.log('🔍 Modal Opacity Style vorher:', this.modal.style.opacity);
+        
+        // Debug CSS computed styles
+        const computedStyle = window.getComputedStyle(this.modal);
+        console.log('🔍 Computed Display:', computedStyle.display);
+        console.log('🔍 Computed Visibility:', computedStyle.visibility);
+        console.log('🔍 Computed Opacity:', computedStyle.opacity);
+        console.log('🔍 Computed Z-Index:', computedStyle.zIndex);
         
         // Stelle sicher, dass das Modal sichtbar ist
         this.modal.style.display = 'flex';
@@ -443,6 +465,16 @@ class RaceSelection {
         this.modal.style.opacity = '1';
         this.modal.setAttribute('aria-hidden', 'false');
         this.modal.classList.add('show');
+        
+        console.log('🔍 Modal Display Style nachher:', this.modal.style.display);
+        console.log('🔍 Modal Visibility Style nachher:', this.modal.style.visibility);
+        console.log('🔍 Modal Opacity Style nachher:', this.modal.style.opacity);
+        
+        // Debug CSS computed styles after changes
+        const computedStyleAfter = window.getComputedStyle(this.modal);
+        console.log('🔍 Computed Display nachher:', computedStyleAfter.display);
+        console.log('🔍 Computed Visibility nachher:', computedStyleAfter.visibility);
+        console.log('🔍 Computed Opacity nachher:', computedStyleAfter.opacity);
         
         // Render races if not already done
         if (this.racesGrid && this.racesGrid.children.length === 0) {
@@ -464,7 +496,33 @@ class RaceSelection {
         
         console.log('✅ Race Selection Modal sollte jetzt sichtbar sein');
         
-
+        // Test visibility after a short delay
+        setTimeout(() => {
+            const isVisible = this.isModalVisible();
+            console.log('🔍 Modal sichtbar nach 100ms?', isVisible);
+            
+            if (!isVisible) {
+                console.error('❌ Modal ist immer noch nicht sichtbar!');
+                console.log('🔍 Debug: Modal Element:', this.modal);
+                console.log('🔍 Debug: Modal Display:', this.modal.style.display);
+                console.log('🔍 Debug: Modal Visibility:', this.modal.style.visibility);
+                console.log('🔍 Debug: Modal Opacity:', this.modal.style.opacity);
+                console.log('🔍 Debug: Modal Classes:', this.modal.className);
+                console.log('🔍 Debug: Modal Aria Hidden:', this.modal.getAttribute('aria-hidden'));
+                
+                // Force show the modal
+                this.modal.style.setProperty('display', 'flex', 'important');
+                this.modal.style.setProperty('visibility', 'visible', 'important');
+                this.modal.style.setProperty('opacity', '1', 'important');
+                this.modal.style.setProperty('z-index', '1000', 'important');
+                
+                console.log('🔍 Modal nach Force-Show:');
+                console.log('🔍 Display:', this.modal.style.display);
+                console.log('🔍 Visibility:', this.modal.style.visibility);
+                console.log('🔍 Opacity:', this.modal.style.opacity);
+                console.log('🔍 Z-Index:', this.modal.style.zIndex);
+            }
+        }, 100);
     }
 
     hideModal() {
@@ -591,12 +649,14 @@ if (typeof window !== 'undefined') {
     window.RaceSelection = RaceSelection;
     
     document.addEventListener('DOMContentLoaded', () => {
+        console.log('🏛️ DOM geladen, initialisiere Race Selection...');
         if (!raceSelection) {
-            console.log('🏛️ Initialisiere Race Selection...');
+            console.log('🏛️ Erstelle neue Race Selection Instanz...');
             raceSelection = new RaceSelection();
             window.raceSelection = raceSelection;
-            
-            
+            console.log('🏛️ Race Selection Instanz erstellt:', raceSelection);
+        } else {
+            console.log('🏛️ Race Selection Instanz bereits vorhanden:', raceSelection);
         }
     });
     

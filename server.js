@@ -1420,6 +1420,12 @@ io.on('connection', (socket) => {
                     message: 'Spiel gestartet! Rassen-Auswahl beginnt.'
                 });
 
+                // Emit race-selection-phase event to trigger race selection UI
+                io.to(data.gameId).emit('race-selection-phase', {
+                    game: game,
+                    message: 'Rassen-Auswahl beginnt'
+                });
+
                 io.emit('game-list-updated', gameManager.getPublicGames());
                 
                 console.log(`🎮 Spiel gestartet: ${game.name} mit ${game.players.length} Spielern`);

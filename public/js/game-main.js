@@ -103,12 +103,28 @@ class GameController {
             console.log('🗺️ Map System initialisiert');
         }
         
-        // Initialize Race Selection
+        // Initialize Race Selection AFTER races are loaded
         if (window.RaceSelection) {
             try {
-                window.raceSelection = new window.RaceSelection();
-                this.raceSelection = window.raceSelection;
-                console.log('🏛️ Race Selection initialisiert');
+                // Ensure races are available before initializing race selection
+                if (!window.LOADED_RACES || window.LOADED_RACES.length === 0) {
+                    console.warn('⚠️ Keine Rassen verfügbar, verwende FALLBACK_RACES');
+                    if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
+                        window.LOADED_RACES = window.FALLBACK_RACES;
+                    }
+                }
+                
+                // Check if race selection is already initialized
+                if (window.raceSelection) {
+                    console.log('🏛️ Race Selection bereits initialisiert, verwende bestehende Instanz');
+                    this.raceSelection = window.raceSelection;
+                } else {
+                    console.log('🏛️ Erstelle neue Race Selection Instanz...');
+                    window.raceSelection = new window.RaceSelection();
+                    this.raceSelection = window.raceSelection;
+                }
+                
+                console.log('🏛️ Race Selection initialisiert:', this.raceSelection);
                 
 
             } catch (error) {
@@ -130,6 +146,7 @@ class GameController {
                 if (data.races && Array.isArray(data.races)) {
                     window.LOADED_RACES = data.races;
                     console.log('🏛️ Rassen-Daten geladen:', data.races.length, 'Rassen');
+                    console.log('🔍 LOADED_RACES nach dem Laden:', window.LOADED_RACES);
                     return;
                 } else {
                     console.warn('⚠️ Ungültiges Rassen-Daten-Format:', data);
@@ -145,6 +162,7 @@ class GameController {
         if (window.FALLBACK_RACES && window.FALLBACK_RACES.length > 0) {
             window.LOADED_RACES = window.FALLBACK_RACES;
             console.log('🏛️ Fallback-Rassen verwendet:', window.FALLBACK_RACES.length, 'Rassen');
+            console.log('🔍 LOADED_RACES nach Fallback:', window.LOADED_RACES);
         } else {
             console.error('❌ Weder races-data.json noch FALLBACK_RACES verfügbar!');
             window.LOADED_RACES = [];
@@ -186,7 +204,7 @@ class GameController {
         
         // Game flow events
         socket.on('game-started', (data) => this.onGameStarted(data));
-        socket.on('race-selection-phase', () => this.startRaceSelection());
+        socket.on('race-selection-phase', (data) => this.onRaceSelectionPhase(data));
         socket.on('all-races-selected', (data) => this.onAllRacesSelected(data));
         socket.on('game-phase-changed', (data) => this.onServerPhaseChanged(data));
         
@@ -226,21 +244,21 @@ class GameController {
         // Wait for server to start the game
         this.setGamePhase('lobby');
         
-        // Request current game state from server
+        // Request current game state from server with longer delay to ensure game is ready
         if (this.socketManager) {
             setTimeout(() => {
                 console.log('📡 Fordere Spielstand vom Server an...');
                 this.socketManager.requestGameState();
-            }, 1000);
+            }, 2000); // Increased delay from 1000ms to 2000ms
         }
         
-        // Demo-Modus: Wenn nach 3 Sekunden keine Server-Verbindung, starte automatisch
+        // Demo-Modus: Wenn nach 5 Sekunden keine Server-Verbindung, starte automatisch
         setTimeout(() => {
             if (!this.socketManager || !this.socketManager.socket || !this.socketManager.socket.connected) {
                 console.log('🤖 Demo-Modus: Keine Server-Verbindung, starte automatisch...');
                 this.startDemoMode();
             }
-        }, 3000);
+        }, 5000); // Increased delay from 3000ms to 5000ms
     }
 
     startDemoMode() {
@@ -251,11 +269,25 @@ class GameController {
         
         // Starte Rassenauswahl sofort
         console.log('🤖 Demo-Modus: Starte Rassenauswahl...');
+        console.log('🤖 Demo-Modus: Race Selection verfügbar?', !!this.raceSelection);
+        console.log('🤖 Demo-Modus: LOADED_RACES verfügbar?', !!window.LOADED_RACES);
+        console.log('🤖 Demo-Modus: LOADED_RACES Anzahl:', window.LOADED_RACES ? window.LOADED_RACES.length : 'undefined');
+        
         this.startRaceSelection();
         
-        // Ensure modal is shown
+        // Ensure modal is shown with proper timing
         if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-            this.raceSelection.show();
+            console.log('🤖 Demo-Modus: Zeige Race Selection Modal...');
+            // Add a delay to ensure race selection is fully initialized
+            setTimeout(() => {
+                if (this.raceSelection && this.raceSelection.isInitialized) {
+                    this.raceSelection.show();
+                } else {
+                    console.error('🤖 Demo-Modus: Race Selection nicht bereit');
+                }
+            }, 500);
+        } else {
+            console.error('🤖 Demo-Modus: Race Selection Modal kann nicht angezeigt werden');
         }
     }
 
@@ -272,7 +304,14 @@ class GameController {
         // Handle race selection phase specifically
         if (phase === 'race_selection' && this.raceSelection && typeof this.raceSelection.show === 'function') {
             console.log('🏛️ setGamePhase: Zeige Race Selection Modal...');
-            this.raceSelection.show();
+            // Add a small delay to ensure everything is ready
+            setTimeout(() => {
+                if (this.raceSelection && this.raceSelection.isInitialized) {
+                    this.raceSelection.show();
+                } else {
+                    console.warn('⚠️ Race Selection nicht bereit in setGamePhase');
+                }
+            }, 100);
         } else if (phase === 'playing' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
             console.log('🎮 setGamePhase: Verstecke Race Selection Modal...');
             this.raceSelection.hide();
@@ -320,11 +359,21 @@ class GameController {
                     this.updateRaceStatusPanel();
                 }
                 
-                                        // Ensure race selection modal is shown
+                // Ensure race selection modal is shown
                 if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-                    this.raceSelection.show();
+                    console.log('🏛️ updateUIForPhase: Zeige Race Selection Modal...');
+                    // Add a small delay to ensure everything is ready
+                    setTimeout(() => {
+                        if (this.raceSelection && this.raceSelection.isInitialized) {
+                            this.raceSelection.show();
+                        } else {
+                            console.warn('⚠️ Race Selection nicht bereit, versuche später...');
+                        }
+                    }, 100);
                 } else {
                     console.log('❌ Race Selection nicht verfügbar in updateUIForPhase');
+                    console.log('🔍 raceSelection:', this.raceSelection);
+                    console.log('🔍 window.raceSelection:', window.raceSelection);
                 }
                 break;
                 
@@ -407,6 +456,13 @@ class GameController {
             }
         } else {
             this.raceSelection = window.raceSelection;
+        }
+        
+        // Ensure race selection is properly initialized
+        if (!this.raceSelection || !this.raceSelection.isInitialized) {
+            console.warn('⚠️ Race Selection noch nicht vollständig initialisiert, warte...');
+            setTimeout(() => this.startRaceSelection(), 500);
+            return;
         }
         
         // Show race selection modal immediately
@@ -707,7 +763,17 @@ class GameController {
             case 'race_selection':
                 console.log('🏛️ Rassen-Auswahl Phase gestartet');
                 if (this.raceSelection && typeof this.raceSelection.show === 'function') {
-                    this.raceSelection.show();
+                    // Add a small delay to ensure everything is ready
+                    setTimeout(() => {
+                        if (this.raceSelection && this.raceSelection.isInitialized) {
+                            console.log('🏛️ onGamePhaseChanged: Zeige Race Selection Modal...');
+                            this.raceSelection.show();
+                        } else {
+                            console.warn('⚠️ Race Selection nicht bereit in onGamePhaseChanged');
+                        }
+                    }, 200);
+                } else {
+                    console.warn('⚠️ Race Selection nicht verfügbar in onGamePhaseChanged');
                 }
                 break;
                 
@@ -782,6 +848,33 @@ class GameController {
             console.warn('⚠️ Keine Server-Karte verfügbar, verwende lokale Karte');
         }
         
+        // Don't call startRaceSelection here - wait for race-selection-phase event
+        // The server will emit race-selection-phase after game-started
+        console.log('⏳ Warte auf race-selection-phase Event vom Server...');
+        
+        // Ensure race selection is properly initialized
+        if (!this.raceSelection || !this.raceSelection.isInitialized) {
+            console.warn('⚠️ Race Selection nicht bereit in onGameStarted, warte...');
+            setTimeout(() => {
+                if (this.raceSelection && this.raceSelection.isInitialized) {
+                    console.log('✅ Race Selection bereit in onGameStarted');
+                } else {
+                    console.error('❌ Race Selection immer noch nicht bereit in onGameStarted');
+                }
+            }, 1000);
+        }
+    }
+
+    onRaceSelectionPhase(data) {
+        console.log('🏛️ Rassen-Auswahl Phase vom Server gestartet:', data);
+        
+        // Ensure race selection is properly initialized
+        if (!this.raceSelection || !this.raceSelection.isInitialized) {
+            console.warn('⚠️ Race Selection nicht bereit in onRaceSelectionPhase, warte...');
+            setTimeout(() => this.onRaceSelectionPhase(data), 500);
+            return;
+        }
+        
         this.startRaceSelection();
     }
 
@@ -791,12 +884,23 @@ class GameController {
         
         // Handle race selection phase specifically
         if (data.phase === 'race_selection' && this.raceSelection && typeof this.raceSelection.show === 'function') {
-            this.raceSelection.show();
+            // Add a small delay to ensure everything is ready
+            setTimeout(() => {
+                if (this.raceSelection && this.raceSelection.isInitialized) {
+                    console.log('🏛️ onServerPhaseChanged: Zeige Race Selection Modal...');
+                    this.raceSelection.show();
+                } else {
+                    console.warn('⚠️ Race Selection nicht bereit in onServerPhaseChanged');
+                }
+            }, 300);
         } else if (data.phase === 'playing' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🎮 onServerPhaseChanged: Verstecke Race Selection Modal...');
             this.raceSelection.hide();
         } else if (data.phase === 'lobby' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🚪 onServerPhaseChanged: Verstecke Race Selection Modal (Lobby)...');
             this.raceSelection.hide();
         } else if (data.phase === 'finished' && this.raceSelection && typeof this.raceSelection.hide === 'function') {
+            console.log('🏁 onServerPhaseChanged: Verstecke Race Selection Modal (Finished)...');
             this.raceSelection.hide();
         }
     }
