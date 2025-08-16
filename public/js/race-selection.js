@@ -1,4 +1,4 @@
-// race-selection.js - Rassen-Auswahl System (Komplett)
+// race-selection.js - Rassen-Auswahl System (Korrigiert)
 
 console.log('🏛️ Initialisiere Race Selection System...');
 
@@ -24,28 +24,35 @@ class RaceSelection {
 
     init() {
         this.setupEventListeners();
-        this.renderRaces();
         this.setupGameStateListeners();
+        
+        // Warte kurz und rendere dann die Rassen
+        setTimeout(() => {
+            this.renderRaces();
+        }, 100);
         
         console.log('✅ Race Selection initialisiert');
     }
 
     setupEventListeners() {
         // Button Events
-        this.confirmBtn.addEventListener('click', () => this.confirmRaceSelection());
+        if (this.confirmBtn) {
+            this.confirmBtn.addEventListener('click', () => this.confirmRaceSelection());
+        }
         
         // Keyboard Events
         document.addEventListener('keydown', (e) => this.handleKeyPress(e));
         
-        // Modal Close Events
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                // Prevent closing modal by clicking outside during race selection
-                e.preventDefault();
-            }
-        });
+        // Modal Close Events (verhindern während Race Selection)
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) {
+                    e.preventDefault();
+                }
+            });
+        }
 
-        // Custom Events from Socket Manager
+        // Custom Events
         window.addEventListener('showRaceSelection', () => this.showModal());
         window.addEventListener('hideRaceSelection', () => this.hideModal());
         window.addEventListener('raceSelectionUpdate', (e) => this.handleRaceUpdate(e.detail));
@@ -53,6 +60,8 @@ class RaceSelection {
     }
 
     setupGameStateListeners() {
+        if (!window.gameState) return;
+        
         // Listen to game state changes
         gameState.on('otherPlayersRacesChanged', () => {
             this.updateRaceAvailability();
@@ -60,9 +69,10 @@ class RaceSelection {
         });
 
         gameState.on('gamePhaseChanged', (data) => {
-            if (data.newValue === GAME_PHASES.RACE_SELECTION) {
-                this.showModal();
-            } else if (data.newValue === GAME_PHASES.PLAYING) {
+            console.log('🔄 Game Phase geändert:', data.newValue);
+            if (data.newValue === 'race_selection') {
+                setTimeout(() => this.showModal(), 500);
+            } else if (data.newValue === 'playing') {
                 this.hideModal();
             }
         });
@@ -73,15 +83,29 @@ class RaceSelection {
     // ========================================
 
     renderRaces() {
+        if (!this.racesGrid) {
+            console.error('❌ Races Grid Element nicht gefunden');
+            return;
+        }
+        
         this.racesGrid.innerHTML = '';
         
-        FALLBACK_RACES.forEach((race, index) => {
+        // Verwende FALLBACK_RACES oder LOADED_RACES
+        const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+        
+        if (availableRaces.length === 0) {
+            console.error('❌ Keine Rassen verfügbar');
+            this.racesGrid.innerHTML = '<div style="text-align: center; padding: 20px;">Keine Rassen verfügbar</div>';
+            return;
+        }
+        
+        availableRaces.forEach((race, index) => {
             const raceCard = this.createRaceCard(race, index);
             this.racesGrid.appendChild(raceCard);
         });
         
         this.updateRaceAvailability();
-        console.log(`🏛️ ${FALLBACK_RACES.length} Rassen gerendert`);
+        console.log(`🏛️ ${availableRaces.length} Rassen gerendert`);
     }
 
     createRaceCard(race, index) {
@@ -92,35 +116,44 @@ class RaceSelection {
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', `Rasse ${race.name} auswählen`);
         
+        // Sichere Werte für alle Properties
+        const safeName = race.name || 'Unbekannte Rasse';
+        const safeIcon = race.icon || '👑';
+        const safeColor = race.color || '#3498db';
+        const safeDescription = race.description || 'Keine Beschreibung verfügbar';
+        const safeSpecialAbility = race.specialAbility || 'Keine besonderen Fähigkeiten';
+        const safeStartingGold = race.startingGold || 100;
+        const safeUnits = race.units || [];
+        
         card.innerHTML = `
-            <div class="race-icon" style="color: ${race.color}">${race.icon}</div>
-            <div class="race-name">${race.name}</div>
-            <div class="race-description">${race.description}</div>
+            <div class="race-icon" style="color: ${safeColor}">${safeIcon}</div>
+            <div class="race-name">${safeName}</div>
+            <div class="race-description">${safeDescription}</div>
             <div class="race-special">
-                <strong>Spezial:</strong> ${race.specialAbility}
+                <strong>Spezial:</strong> ${safeSpecialAbility}
             </div>
             <div class="race-stats">
                 <div class="stat-item">
                     <span class="stat-label">Startgold:</span>
-                    <span class="stat-value" style="color: #f1c40f;">💰 ${race.startingGold}</span>
+                    <span class="stat-value" style="color: #f1c40f;">💰 ${safeStartingGold}</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Einheiten:</span>
-                    <span class="stat-value">${race.units.length}</span>
+                    <span class="stat-value">${safeUnits.length}</span>
                 </div>
             </div>
             <div class="unit-grid">
-                ${race.units.slice(0, 6).map(unit => `
-                    <div class="unit-preview" title="${unit.name} - ${unit.cost}💰">
-                        <div class="unit-icon">${unit.icon}</div>
-                        <div class="unit-name">${unit.name}</div>
-                        <div class="unit-cost">${unit.cost}💰</div>
+                ${safeUnits.slice(0, 6).map(unit => `
+                    <div class="unit-preview" title="${unit.name || 'Unbekannt'} - ${unit.cost || 0}💰">
+                        <div class="unit-icon">${unit.icon || '❓'}</div>
+                        <div class="unit-name">${unit.name || 'Unbekannt'}</div>
+                        <div class="unit-cost">${unit.cost || 0}💰</div>
                     </div>
                 `).join('')}
-                ${race.units.length > 6 ? `
+                ${safeUnits.length > 6 ? `
                     <div class="unit-preview more-units">
                         <div class="unit-icon">⋯</div>
-                        <div class="unit-name">+${race.units.length - 6}</div>
+                        <div class="unit-name">+${safeUnits.length - 6}</div>
                     </div>
                 ` : ''}
             </div>
@@ -134,10 +167,6 @@ class RaceSelection {
                 this.selectRace(race.id);
             }
         });
-        
-        // Hover effects
-        card.addEventListener('mouseenter', () => this.previewRace(race));
-        card.addEventListener('mouseleave', () => this.clearPreview());
         
         return card;
     }
@@ -167,13 +196,21 @@ class RaceSelection {
         raceCard.focus();
         
         this.selectedRaceId = raceId;
-        this.confirmBtn.disabled = false;
         
-        const race = FALLBACK_RACES.find(r => r.id === raceId);
-        this.updateStatus(`✅ ${race.name} ausgewählt - Klicke "Bestätigen" um fortzufahren`);
+        if (this.confirmBtn) {
+            this.confirmBtn.disabled = false;
+        }
         
-        // Play selection sound effect (if available)
-        this.playSound('select');
+        const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+        const race = availableRaces.find(r => r.id === raceId);
+        if (race) {
+            this.updateStatus(`✅ ${race.name} ausgewählt - Klicke "Bestätigen" um fortzufahren`);
+            
+            // Update local game state
+            if (window.gameState) {
+                gameState.setSelectedRace(race);
+            }
+        }
         
         console.log('🏛️ Rasse ausgewählt:', raceId);
     }
@@ -182,41 +219,67 @@ class RaceSelection {
         if (!this.selectedRaceId || this.isProcessing) return;
         
         this.isProcessing = true;
-        this.confirmBtn.disabled = true;
-        this.confirmBtn.innerHTML = '<span class="loading-spinner"></span> Sende...';
         
-        const race = FALLBACK_RACES.find(r => r.id === this.selectedRaceId);
+        if (this.confirmBtn) {
+            this.confirmBtn.disabled = true;
+            this.confirmBtn.innerHTML = '<span class="loading-spinner"></span> Sende...';
+        }
         
-        // Update local game state
-        gameState.setSelectedRace(race);
-        gameState.updateState('raceConfirmed', true);
+        const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+        const race = availableRaces.find(r => r.id === this.selectedRaceId);
         
-        // Send to server via socket manager
-        if (window.socketManager) {
-            const success = window.socketManager.selectRace(this.selectedRaceId);
-            
-            if (!success) {
-                this.handleSelectionFailed({ error: 'Konnte Auswahl nicht senden' });
-                return;
-            }
-        } else {
-            console.error('❌ Socket Manager nicht verfügbar');
-            this.handleSelectionFailed({ error: 'Keine Serververbindung' });
+        if (!race) {
+            this.handleSelectionFailed({ error: 'Rasse nicht gefunden' });
             return;
         }
         
-        // Update UI
-        this.updatePlayerDisplay();
+        // Update local game state
+        if (window.gameState) {
+            gameState.setSelectedRace(race);
+            gameState.updateState('raceConfirmed', true);
+        }
+        
+        // Send to server via socket manager
+        if (window.socketManager && window.socketManager.socket) {
+            const gameSettings = window.gameState ? gameState.data.gameSettings : null;
+            const currentPlayer = window.gameState ? gameState.currentPlayer : null;
+            
+            window.socketManager.socket.emit('select-race', {
+                gameId: gameSettings?.gameId || 'demo-game',
+                playerId: currentPlayer?.id || 'local',
+                raceId: this.selectedRaceId
+            });
+        } else {
+            // Demo mode oder kein Socket verfügbar
+            console.log('🤖 Demo-Modus: Simuliere Rassen-Auswahl');
+            setTimeout(() => this.simulateDemoRaceSelection(), 1000);
+        }
+        
         this.updateStatus('⏳ Warte auf andere Spieler...');
         
-        // Add our race to the taken list
-        gameState.setOtherPlayerRace(gameState.currentPlayer.name, this.selectedRaceId);
-        this.updateRaceAvailability();
-        
-        // Play confirmation sound
-        this.playSound('confirm');
-        
         console.log('✅ Rasse bestätigt:', race.name);
+        
+        // Dispatch event für Game Controller
+        window.dispatchEvent(new CustomEvent('raceConfirmed', {
+            detail: { race: race }
+        }));
+    }
+
+    simulateDemoRaceSelection() {
+        // Simuliere, dass andere Spieler Rassen wählen
+        setTimeout(() => {
+            this.hideModal();
+            
+            // Trigger game start
+            if (window.gameState) {
+                gameState.setGamePhase('playing');
+            }
+            
+            // Dispatch event für Game Controller
+            window.dispatchEvent(new CustomEvent('allRacesSelected', {
+                detail: { message: 'Alle Rassen gewählt (Demo)' }
+            }));
+        }, 2000);
     }
 
     // ========================================
@@ -224,11 +287,11 @@ class RaceSelection {
     // ========================================
 
     updateRaceAvailability() {
-        if (!this.racesGrid) return;
+        if (!this.racesGrid || !window.gameState) return;
         
         this.racesGrid.querySelectorAll('.race-card').forEach(card => {
             const raceId = card.dataset.raceId;
-            const isTaken = gameState.isRaceTaken(raceId);
+            const isTaken = gameState.data.otherPlayersRaces.has(raceId);
             const isMySelection = this.selectedRaceId === raceId;
             
             if (isTaken && !isMySelection) {
@@ -236,7 +299,7 @@ class RaceSelection {
                 card.setAttribute('aria-disabled', 'true');
                 
                 const nameElement = card.querySelector('.race-name');
-                if (!nameElement.innerHTML.includes('(Vergeben)')) {
+                if (nameElement && !nameElement.innerHTML.includes('(Vergeben)')) {
                     nameElement.innerHTML += ' <span style="color: #e74c3c; font-size: 0.8em;">(Vergeben)</span>';
                 }
             } else {
@@ -244,19 +307,22 @@ class RaceSelection {
                 card.setAttribute('aria-disabled', 'false');
                 
                 const nameElement = card.querySelector('.race-name');
-                nameElement.innerHTML = nameElement.innerHTML.replace(
-                    / <span style="color: #e74c3c; font-size: 0.8em;">\(Vergeben\)<\/span>/, 
-                    ''
-                );
+                if (nameElement) {
+                    nameElement.innerHTML = nameElement.innerHTML.replace(
+                        / <span style="color: #e74c3c; font-size: 0.8em;">\(Vergeben\)<\/span>/, 
+                        ''
+                    );
+                }
             }
         });
     }
 
     updateRaceStatus() {
-        if (gameState.gamePhase !== GAME_PHASES.RACE_SELECTION) return;
+        if (!window.gameState || gameState.gamePhase !== 'race_selection') return;
         
-        const totalPlayers = gameState.gameSettings?.players?.length || 0;
-        const selectedCount = gameState.getAllSelectedRaces().length;
+        const gameSettings = gameState.data.gameSettings;
+        const totalPlayers = gameSettings?.players?.length || 2;
+        const selectedCount = gameState.data.otherPlayersRaces.size;
         
         this.updateStatus(`${selectedCount}/${totalPlayers} Spieler haben ihre Rasse gewählt`);
     }
@@ -277,9 +343,6 @@ class RaceSelection {
         this.isProcessing = false;
         this.enableConfirmButton();
         this.showError(`Fehler: ${data.error}`);
-        
-        // Play error sound
-        this.playSound('error');
     }
 
     handleKeyPress(e) {
@@ -287,93 +350,26 @@ class RaceSelection {
         
         // ESC to cancel (but only if not processing)
         if (e.key === 'Escape' && !this.isProcessing) {
-            // Don't allow closing during race selection phase
-            if (gameState.gamePhase === GAME_PHASES.RACE_SELECTION) {
+            if (window.gameState && gameState.gamePhase === 'race_selection') {
                 this.showError('Rassen-Auswahl ist erforderlich');
                 return;
             }
             this.hideModal();
         }
         
-        // Arrow key navigation
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-            e.preventDefault();
-            this.navigateRaces(e.key);
-        }
-        
         // Number keys for quick selection
         if (e.key >= '1' && e.key <= '9') {
             const index = parseInt(e.key) - 1;
-            if (index < FALLBACK_RACES.length) {
-                this.selectRace(FALLBACK_RACES[index].id);
+            const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+            if (index < availableRaces.length) {
+                this.selectRace(availableRaces[index].id);
             }
         }
         
         // Enter to confirm
-        if (e.key === 'Enter' && this.selectedRaceId && !this.confirmBtn.disabled) {
+        if (e.key === 'Enter' && this.selectedRaceId && this.confirmBtn && !this.confirmBtn.disabled) {
             this.confirmRaceSelection();
         }
-    }
-
-    navigateRaces(direction) {
-        const cards = Array.from(this.racesGrid.querySelectorAll('.race-card:not(.taken)'));
-        const currentIndex = cards.findIndex(card => card.classList.contains('selected'));
-        let newIndex;
-        
-        switch (direction) {
-            case 'ArrowLeft':
-                newIndex = currentIndex > 0 ? currentIndex - 1 : cards.length - 1;
-                break;
-            case 'ArrowRight':
-                newIndex = currentIndex < cards.length - 1 ? currentIndex + 1 : 0;
-                break;
-            case 'ArrowUp':
-                newIndex = currentIndex >= 3 ? currentIndex - 3 : currentIndex;
-                break;
-            case 'ArrowDown':
-                newIndex = currentIndex + 3 < cards.length ? currentIndex + 3 : currentIndex;
-                break;
-        }
-        
-        if (newIndex !== undefined && cards[newIndex]) {
-            const raceId = cards[newIndex].dataset.raceId;
-            this.selectRace(raceId);
-        }
-    }
-
-    // ========================================
-    // RACE PREVIEW SYSTEM
-    // ========================================
-
-    previewRace(race) {
-        // Create detailed preview tooltip or sidebar
-        const preview = this.createRacePreview(race);
-        this.showPreview(preview);
-    }
-
-    createRacePreview(race) {
-        return {
-            name: race.name,
-            description: race.description,
-            specialAbility: race.specialAbility,
-            startingGold: race.startingGold,
-            units: race.units.map(unit => ({
-                name: unit.name,
-                icon: unit.icon,
-                cost: unit.cost,
-                stats: unit.baseStats
-            }))
-        };
-    }
-
-    showPreview(preview) {
-        // Implementation for showing detailed race preview
-        // Could be a tooltip, sidebar, or modal overlay
-        console.log('👁️ Race Preview:', preview.name);
-    }
-
-    clearPreview() {
-        // Clear any active previews
     }
 
     // ========================================
@@ -381,10 +377,20 @@ class RaceSelection {
     // ========================================
 
     showModal() {
-        if (!this.modal) return;
+        if (!this.modal) {
+            console.error('❌ Race Selection Modal nicht gefunden');
+            return;
+        }
+        
+        console.log('🔍 Zeige Race Selection Modal');
         
         this.modal.style.display = 'flex';
         this.modal.setAttribute('aria-hidden', 'false');
+        
+        // Render races if not already done
+        if (this.racesGrid && this.racesGrid.children.length === 0) {
+            this.renderRaces();
+        }
         
         // Focus first available race
         const firstAvailableRace = this.racesGrid.querySelector('.race-card:not(.taken)');
@@ -393,24 +399,22 @@ class RaceSelection {
         }
         
         // Update initial status
-        this.updateRaceStatus();
+        this.updateStatus('Wähle eine Rasse aus den verfügbaren Optionen');
         
         // Disable body scroll
         document.body.style.overflow = 'hidden';
-        
-        console.log('🔍 Race Selection Modal geöffnet');
     }
 
     hideModal() {
         if (!this.modal) return;
+        
+        console.log('❌ Verstecke Race Selection Modal');
         
         this.modal.style.display = 'none';
         this.modal.setAttribute('aria-hidden', 'true');
         
         // Re-enable body scroll
         document.body.style.overflow = '';
-        
-        console.log('❌ Race Selection Modal geschlossen');
     }
 
     isModalVisible() {
@@ -421,6 +425,7 @@ class RaceSelection {
         if (this.statusDisplay) {
             this.statusDisplay.textContent = message;
         }
+        console.log('📢 Race Selection Status:', message);
     }
 
     showError(message) {
@@ -429,8 +434,11 @@ class RaceSelection {
         // Reset status after delay
         setTimeout(() => {
             if (this.selectedRaceId) {
-                const race = FALLBACK_RACES.find(r => r.id === this.selectedRaceId);
-                this.updateStatus(`✅ ${race.name} ausgewählt - Klicke "Bestätigen" um fortzufahren`);
+                const availableRaces = window.LOADED_RACES || window.FALLBACK_RACES || [];
+                const race = availableRaces.find(r => r.id === this.selectedRaceId);
+                if (race) {
+                    this.updateStatus(`✅ ${race.name} ausgewählt - Klicke "Bestätigen" um fortzufahren`);
+                }
             } else {
                 this.updateStatus('Wähle eine Rasse aus den verfügbaren Optionen');
             }
@@ -438,111 +446,35 @@ class RaceSelection {
     }
 
     enableConfirmButton() {
-        this.confirmBtn.disabled = false;
-        this.confirmBtn.textContent = '✅ Rasse bestätigen';
-    }
-
-    updatePlayerDisplay() {
-        const raceDisplay = document.getElementById('raceDisplay');
-        const playerName = document.getElementById('playerName');
-        const goldAmount = document.getElementById('goldAmount');
-        
-        if (gameState.selectedRace) {
-            if (raceDisplay) raceDisplay.textContent = gameState.selectedRace.icon;
-            if (goldAmount) goldAmount.textContent = gameState.playerGold;
-            
-            if (gameState.currentPlayer && playerName) {
-                playerName.textContent = `${gameState.currentPlayer.name} (${gameState.selectedRace.name})`;
-            }
+        if (this.confirmBtn) {
+            this.confirmBtn.disabled = false;
+            this.confirmBtn.textContent = '✅ Rasse bestätigen';
         }
     }
 
     // ========================================
-    // SOUND EFFECTS
+    // PUBLIC API
     // ========================================
 
-    playSound(type) {
-        // Simple sound effects using Web Audio API or HTML5 Audio
-        if (!GAME_CONFIG.DEBUG_MODE) return;
-        
-        try {
-            const sounds = {
-                select: { frequency: 800, duration: 100 },
-                confirm: { frequency: 1000, duration: 200 },
-                error: { frequency: 300, duration: 500 }
-            };
-            
-            const sound = sounds[type];
-            if (!sound) return;
-            
-            this.playBeep(sound.frequency, sound.duration);
-        } catch (error) {
-            // Silent fail for sound effects
-        }
+    show() {
+        this.showModal();
     }
 
-    playBeep(frequency, duration) {
-        if (!window.AudioContext && !window.webkitAudioContext) return;
-        
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = frequency;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration / 1000);
+    hide() {
+        this.hideModal();
     }
 
-    // ========================================
-    // ACCESSIBILITY FEATURES
-    // ========================================
-
-    announceToScreenReader(message) {
-        const announcement = document.createElement('div');
-        announcement.setAttribute('aria-live', 'polite');
-        announcement.setAttribute('aria-atomic', 'true');
-        announcement.style.position = 'absolute';
-        announcement.style.left = '-10000px';
-        announcement.style.width = '1px';
-        announcement.style.height = '1px';
-        announcement.style.overflow = 'hidden';
-        
-        document.body.appendChild(announcement);
-        announcement.textContent = message;
-        
-        setTimeout(() => {
-            document.body.removeChild(announcement);
-        }, 1000);
+    isVisible() {
+        return this.isModalVisible();
     }
 
-    // ========================================
-    // DEBUG METHODS
-    // ========================================
-
-    getDebugInfo() {
-        return {
-            selectedRaceId: this.selectedRaceId,
-            isProcessing: this.isProcessing,
-            isModalVisible: this.isModalVisible(),
-            availableRaces: FALLBACK_RACES.filter(race => !gameState.isRaceTaken(race.id)),
-            takenRaces: gameState.getAllSelectedRaces()
-        };
-    }
-
-    simulateRaceSelection(raceId) {
-        if (GAME_CONFIG.DEBUG_MODE) {
-            console.log('🧪 Simuliere Rassen-Auswahl:', raceId);
-            this.selectRace(raceId);
-            setTimeout(() => this.confirmRaceSelection(), 500);
-        }
+    reset() {
+        this.selectedRaceId = null;
+        this.isProcessing = false;
+        this.enableConfirmButton();
+        this.racesGrid.querySelectorAll('.race-card').forEach(card => {
+            card.classList.remove('selected', 'taken');
+        });
     }
 }
 
@@ -558,6 +490,7 @@ if (typeof window !== 'undefined') {
     
     document.addEventListener('DOMContentLoaded', () => {
         if (!raceSelection) {
+            console.log('🏛️ Initialisiere Race Selection...');
             raceSelection = new RaceSelection();
             window.raceSelection = raceSelection;
         }
