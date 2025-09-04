@@ -12,7 +12,7 @@ module.exports = (io) => {
             console.log(`📡 RECEIVED EVENT: ${eventName} from ${socket.id}`, args);
         });
 		
-		 socket.on('start-game', async (data, acknowledgment) => {
+		socket.on('start-game', async (data, acknowledgment) => {
             console.log('🎮 START-GAME EVENT RECEIVED');
             console.log('🎮 Data received:', data);
             console.log('🎮 Socket ID:', socket.id);
@@ -102,7 +102,7 @@ module.exports = (io) => {
 
         // ✅ VERBESSERTE JOIN-GAME BEHANDLUNG
         socket.on('join-game', async (data) => {
-			console.log('🏠 JOIN-GAME EVENT RECEIVED:', data);fasync function getGameState(gameId)
+            console.log('🏠 JOIN-GAME EVENT RECEIVED:', data);
             const { gameId, playerName } = data;
             
             try {
