@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Game - Spiel</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/game.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- Game Header -->
+        <header class="game-header">
+            <div class="game-info">
+                <div class="game-title">
+                    <h1 id="game-name">Spiel wird geladen...</h1>
+                    <div id="game-status" class="game-status">Runde <span id="current-turn">1</span></div>
+                </div>
+                <div class="current-player">
+                    <div class="current-player-indicator">
+                        <div id="current-player-avatar" class="player-avatar"></div>
+                        <div class="player-info">
+                            <div id="current-player-name" class="player-name">Spieler</div>
+                            <div id="current-player-gold" class="player-gold">💰 0</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="game-controls">
+                    <button id="end-turn-btn" class="btn btn-primary" disabled>
+                        ⏭️ Zug beenden
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Game Area -->
+        <main class="game-main">
+            <!-- Game Map Container -->
+            <div class="map-container">
+                <div class="map-wrapper">
+                    <canvas id="game-map" width="800" height="600"></canvas>
+                    <div id="map-overlay" class="map-overlay">
+                        <!-- Overlay for UI elements like selection indicators -->
+                    </div>
+                </div>
+                
+                <!-- Map Controls -->
+                <div class="map-controls">
+                    <div class="zoom-controls">
+                        <button id="zoom-in" class="btn btn-secondary">🔍+</button>
+                        <button id="zoom-out" class="btn btn-secondary">🔍-</button>
+                        <button id="reset-view" class="btn btn-secondary">🎯</button>
+                    </div>
+                    <div class="coordinate-display">
+                        <span id="cursor-coordinates">0, 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Sidebar -->
+            <aside class="game-sidebar">
+                <!-- Action Panel -->
+                <div class="action-panel card">
+                    <h3>🎮 Aktionen</h3>
+                    <div id="action-buttons" class="action-buttons">
+                        <button id="move-unit-btn" class="action-btn" disabled>
+                            🚶 Einheit bewegen
+                        </button>
+                        <button id="attack-btn" class="action-btn" disabled>
+                            ⚔️ Angreifen
+                        </button>
+                        <button id="buy-unit-btn" class="action-btn" disabled>
+                            🛒 Einheit kaufen
+                        </button>
+                        <button id="upgrade-tier-btn" class="action-btn" disabled>
+                            ⬆️ Stufe erhöhen
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Selection Info -->
+                <div id="selection-info" class="selection-info card hidden">
+                    <h3>📋 Auswahl</h3>
+                    <div id="selection-content">
+                        <!-- Selected tile/unit info will be displayed here -->
+                    </div>
+                </div>
+
+                <!-- Players List -->
+                <div class="players-panel card">
+                    <h3>👥 Spieler</h3>
+                    <div id="players-list" class="players-list">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Lade Spieler...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Panel -->
+                <div class="chat-panel card">
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            💬 Spiel-Chat
+                        </div>
+                        <div id="chat-messages" class="chat-messages">
+                            <!-- Chat messages will be loaded here -->
+                        </div>
+                        <div class="chat-input">
+                            <input type="text" id="chat-input" placeholder="Nachricht..." maxlength="200">
+                            <button id="send-chat" class="btn btn-primary">📤</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Unit Purchase Modal -->
+    <div id="purchase-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🛒 Einheit kaufen</h2>
+                <button class="close" onclick="Utils.hideModal('purchase-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="available-units" class="units-grid">
+                    <!-- Available units for purchase will be shown here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tier Upgrade Modal -->
+    <div id="upgrade-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⬆️ Stufe erhöhen</h2>
+                <button class="close" onclick="Utils.hideModal('upgrade-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="tier-upgrade-info">
+                    <p>Möchtest du deine Rasse auf die nächste Stufe erhöhen?</p>
+                    <div class="upgrade-stats">
+                        <div class="current-tier">
+                            <h4>Aktuelle Stufe: <span id="current-tier-level">1</span></h4>
+                        </div>
+                        <div class="upgrade-cost">
+                            <h4>Kosten: <span id="upgrade-cost">500</span> 🪙</h4>
+                        </div>
+                        <div class="upgrade-benefits">
+                            <h4>Vorteile:</h4>
+                            <ul id="upgrade-benefits-list">
+                                <li>+20% Lebenspunkte für neue Einheiten</li>
+                                <li>+20% Angriffsstärke für neue Einheiten</li>
+                                <li>+20% Reichweite für neue Einheiten</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Utils.hideModal('upgrade-modal')">Abbrechen</button>
+                <button id="confirm-upgrade" class="btn btn-primary">Stufe erhöhen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attack Confirmation Modal -->
+    <div id="attack-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚔️ Angriff bestätigen</h2>
+                <button class="close" onclick="Utils.hideModal('attack-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="attack-info">
+                    <div class="attack-preview">
+                        <div class="attacker-info">
+                            <h4>Angreifer:</h4>
+                            <div id="attacker-details"></div>
+                        </div>
+                        <div class="vs-indicator">⚔️</div>
+                        <div class="defender-info">
+                            <h4>Verteidiger:</h4>
+                            <div id="defender-details"></div>
+                        </div>
+                    </div>
+                    <div class="damage-prediction">
+                        <p id="damage-preview"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Utils.hideModal('attack-modal')">Abbrechen</button>
+                <button id="confirm-attack" class="btn btn-danger">Angreifen!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-content">
+            <div class="spinner large"></div>
+            <div id="loading-text">Lade Spiel...</div>
+        </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="victory-modal" class="modal">
+        <div class="modal-content victory-content">
+            <div class="modal-header">
+                <h2 id="victory-title">🎉 Sieg!</h2>
+            </div>
+            <div class="modal-body">
+                <div id="victory-info" class="victory-info">
+                    <p id="victory-message"></p>
+                    <div id="game-stats" class="game-stats">
+                        <!-- Game statistics will be shown here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="window.location.href='/'">
+                    🏠 Zurück zur Startseite
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error/Success Messages -->
+    <div id="message-container" class="message-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/gameMap.js"></script>
+    <script src="../js/gameUnits.js"></script>
+    <script src="../js/gameChat.js"></script>
+    <script src="../js/game.js"></script>
+</body>
+</html>

@@ -295,6 +295,52 @@ router.get('/:gameId/buildings', async (req, res) => {
     }
 });
 
+// GET /api/games/:gameId/map - Get map data
+router.get('/:gameId/map', async (req, res) => {
+    try {
+        const gameId = req.params.gameId;
+        
+        if (!gameId || isNaN(gameId)) {
+            return res.status(400).json({ error: 'Invalid game ID' });
+        }
+        
+        const game = await db.games.findById(gameId);
+        if (!game) {
+            return res.status(404).json({ error: 'Game not found' });
+        }
+        
+        const mapData = await db.maps.findByGame(gameId);
+        res.json(mapData);
+        
+    } catch (error) {
+        console.error('Error fetching map data:', error);
+        res.status(500).json({ error: 'Failed to fetch map data' });
+    }
+});
+
+// GET /api/games/:gameId/units - Get units data
+router.get('/:gameId/units', async (req, res) => {
+    try {
+        const gameId = req.params.gameId;
+        
+        if (!gameId || isNaN(gameId)) {
+            return res.status(400).json({ error: 'Invalid game ID' });
+        }
+        
+        const game = await db.games.findById(gameId);
+        if (!game) {
+            return res.status(404).json({ error: 'Game not found' });
+        }
+        
+        const unitsData = await db.units.findByGame(gameId);
+        res.json(unitsData);
+        
+    } catch (error) {
+        console.error('Error fetching units data:', error);
+        res.status(500).json({ error: 'Failed to fetch units data' });
+    }
+});
+
 // ✅ NEUE ENDPOINT: GAME REPAIR
 router.post('/:gameId/repair', async (req, res) => {
     try {

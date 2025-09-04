@@ -210,16 +210,35 @@ module.exports = (io) => {
                 // Check if all players have confirmed their races
                 const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
                 if (allConfirmed) {
-                    // ✅ SPÄTER: Kartengenerierung implementieren
-                    // await db.games.updateStatus(gameId, 'playing');
-                    // await generateMap(gameId, gameState.game.map_size, gameState.players);
+                    // ✅ AKTIVIERT: Kartengenerierung
+                    console.log('🗺️ Starting map generation...');
+                    io.to(`game-${gameId}`).emit('map-generation-start');
                     
-                    // Für jetzt: Direkte Weiterleitung zum Spiel
-                    await db.games.updateStatus(gameId, 'playing');
-                    
-                    io.to(`game-${gameId}`).emit('map-generation-complete', {
-                        redirectUrl: `/game/${gameId}`
-                    });
+                    try {
+                        // Parse map size
+                        const [width, height] = gameState.game.map_size.split('x').map(Number);
+                        
+                        // Generate map
+                        await generateMap(gameId, width, height, gameState.players);
+                        
+                        // Set first player as current turn
+                        const firstPlayer = gameState.players.sort((a, b) => a.player_order - b.player_order)[0];
+                        await db.games.updateCurrentTurn(gameId, 1, firstPlayer.id);
+                        
+                        // Update game status to playing
+                        await db.games.updateStatus(gameId, 'playing');
+                        
+                        console.log('🗺️ Map generation completed!');
+                        io.to(`game-${gameId}`).emit('map-generation-complete', {
+                            redirectUrl: `/game/${gameId}`
+                        });
+                        
+                    } catch (error) {
+                        console.error('❌ Map generation failed:', error);
+                        io.to(`game-${gameId}`).emit('map-generation-failed', {
+                            error: 'Kartengenerierung fehlgeschlagen'
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('Error confirming race:', error);
@@ -267,6 +286,260 @@ module.exports = (io) => {
         });
 
         // Game actions (for game.html)
+        socket.on('move-unit', async (data, acknowledgment) => {
+            try {
+                const { gameId, unitId, targetX, targetY, path } = data;
+                
+                // Validate game and player
+                const game = await db.games.findById(gameId);
+                if (!game || game.status !== 'playing') {
+                    const error = 'Game not in playing state';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Get unit and validate ownership
+                const units = await db.units.findByGame(gameId);
+                const unit = units.find(u => u.id === parseInt(unitId));
+                
+                if (!unit) {
+                    const error = 'Unit not found';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Validate it's player's turn
+                const players = await db.players.findByGame(gameId);
+                const player = players.find(p => p.id === unit.player_id);
+                
+                if (game.current_player_turn !== unit.player_id) {
+                    const error = 'Not your turn';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Update unit position and movement
+                const movementCost = Math.min(path.length, unit.movement_left || unit.movement_points);
+                const newMovementLeft = (unit.movement_left || unit.movement_points) - movementCost;
+                
+                await db.query(
+                    'UPDATE game_units SET x_pos = ?, y_pos = ?, movement_left = ? WHERE id = ?',
+                    [targetX, targetY, newMovementLeft, unitId]
+                );
+                
+                // Get updated unit
+                const updatedUnits = await db.units.findByGame(gameId);
+                const updatedUnit = updatedUnits.find(u => u.id === parseInt(unitId));
+                
+                // Broadcast to all players
+                io.to(`game-${gameId}`).emit('unit-moved', {
+                    unit: updatedUnit,
+                    playerId: unit.player_id,
+                    path: path
+                });
+                
+                if (acknowledgment) acknowledgment({ success: true });
+                
+            } catch (error) {
+                console.error('Error moving unit:', error);
+                const errorMessage = 'Failed to move unit';
+                socket.emit('error', { message: errorMessage });
+                if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
+            }
+        });
+
+        socket.on('attack-unit', async (data, acknowledgment) => {
+            try {
+                const { gameId, attackerUnitId, targetX, targetY } = data;
+                
+                // Get game units
+                const units = await db.units.findByGame(gameId);
+                const attacker = units.find(u => u.id === parseInt(attackerUnitId));
+                const defender = units.find(u => u.x_pos === targetX && u.y_pos === targetY);
+                
+                if (!attacker || !defender) {
+                    const error = 'Unit not found';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                if (attacker.player_id === defender.player_id) {
+                    const error = 'Cannot attack own unit';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Calculate damage with tier bonus
+                const attackerPlayer = await db.query('SELECT tier_level FROM game_players WHERE id = ?', [attacker.player_id]);
+                const tierBonus = getTierBonus(attackerPlayer[0]?.tier_level || 1);
+                const damage = Math.round(attacker.attack_power * (1 + tierBonus));
+                
+                const newHealth = defender.current_health - damage;
+                const destroyed = newHealth <= 0;
+                
+                if (destroyed) {
+                    // Remove unit
+                    await db.query('DELETE FROM game_units WHERE id = ?', [defender.id]);
+                } else {
+                    // Update health
+                    await db.query('UPDATE game_units SET current_health = ? WHERE id = ?', [newHealth, defender.id]);
+                }
+                
+                // Broadcast attack result
+                const attackData = {
+                    attacker: { ...attacker, movement_left: 0 }, // Attacking uses all movement
+                    defender: destroyed ? null : { ...defender, current_health: newHealth },
+                    destroyedUnitId: destroyed ? defender.id : null,
+                    damage: damage,
+                    destroyed: destroyed
+                };
+                
+                io.to(`game-${gameId}`).emit('unit-attacked', attackData);
+                
+                if (acknowledgment) acknowledgment({ success: true });
+                
+            } catch (error) {
+                console.error('Error in attack:', error);
+                const errorMessage = 'Failed to attack';
+                socket.emit('error', { message: errorMessage });
+                if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
+            }
+        });
+
+        socket.on('purchase-unit', async (data, acknowledgment) => {
+            try {
+                const { gameId, unitTypeId, buildingX, buildingY } = data;
+                
+                // Get player and validate gold
+                const game = await db.games.findById(gameId);
+                const players = await db.players.findByGame(gameId);
+                const currentPlayer = players.find(p => p.id === game.current_player_turn);
+                
+                if (!currentPlayer) {
+                    const error = 'Player not found';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Get unit type and cost
+                const unitType = await db.query('SELECT * FROM units WHERE id = ?', [unitTypeId]);
+                if (!unitType || unitType.length === 0) {
+                    const error = 'Unit type not found';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                const unit = unitType[0];
+                if (currentPlayer.gold < unit.cost) {
+                    const error = 'Not enough gold';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Calculate enhanced stats based on tier
+                const tierBonus = getTierBonus(currentPlayer.tier_level || 1);
+                const enhancedHealth = Math.round(unit.health_points * (1 + tierBonus));
+                const enhancedAttack = Math.round(unit.attack_power * (1 + tierBonus));
+                const enhancedRange = Math.max(1, Math.round(unit.range * (1 + tierBonus)));
+                
+                // Create unit
+                const insertResult = await db.query(
+                    'INSERT INTO game_units (game_id, player_id, unit_id, x_pos, y_pos, current_health, movement_left) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [gameId, currentPlayer.id, unitTypeId, buildingX, buildingY, enhancedHealth, unit.movement_points]
+                );
+                
+                // Update player gold
+                const newGold = currentPlayer.gold - unit.cost;
+                await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [newGold, currentPlayer.id]);
+                
+                // Get created unit with full info
+                const createdUnit = await db.query(`
+                    SELECT gu.*, u.name, u.image_filename, u.attack_power, u.movement_points, u.range, u.can_fly
+                    FROM game_units gu
+                    JOIN units u ON gu.unit_id = u.id
+                    WHERE gu.id = ?
+                `, [insertResult.insertId]);
+                
+                // Broadcast unit purchase
+                io.to(`game-${gameId}`).emit('unit-purchased', {
+                    unit: createdUnit[0],
+                    playerId: currentPlayer.id,
+                    playerGold: newGold
+                });
+                
+                if (acknowledgment) acknowledgment({ success: true });
+                
+            } catch (error) {
+                console.error('Error purchasing unit:', error);
+                const errorMessage = 'Failed to purchase unit';
+                socket.emit('error', { message: errorMessage });
+                if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
+            }
+        });
+
+        socket.on('upgrade-tier', async (data, acknowledgment) => {
+            try {
+                const { gameId, playerName, newTier } = data;
+                
+                const players = await db.players.findByGame(gameId);
+                const player = players.find(p => p.player_name === playerName);
+                
+                if (!player) {
+                    const error = 'Player not found';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Get upgrade cost
+                const race = await db.query('SELECT * FROM races WHERE id = ?', [player.race_id]);
+                const upgradeCosts = {
+                    2: race[0]?.tier_2_cost || 500,
+                    3: race[0]?.tier_3_cost || 1000
+                };
+                
+                const cost = upgradeCosts[newTier];
+                if (!cost || newTier < 2 || newTier > 3) {
+                    const error = 'Invalid tier upgrade';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                if (player.gold < cost) {
+                    const error = 'Not enough gold';
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Update player
+                const newGold = player.gold - cost;
+                await db.query('UPDATE game_players SET gold = ?, tier_level = ? WHERE id = ?', 
+                    [newGold, newTier, player.id]);
+                
+                // Broadcast upgrade
+                const gameState = await getGameState(gameId);
+                io.to(`game-${gameId}`).emit('game-state-update', gameState);
+                
+                if (acknowledgment) acknowledgment({ success: true });
+                
+            } catch (error) {
+                console.error('Error upgrading tier:', error);
+                const errorMessage = 'Failed to upgrade tier';
+                socket.emit('error', { message: errorMessage });
+                if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
+            }
+        });
+
         socket.on('end-turn', async (data) => {
             try {
                 const { gameId, playerName } = data;
@@ -283,6 +556,15 @@ module.exports = (io) => {
                 // Update current turn
                 const newTurn = nextPlayerIndex === 0 ? game.current_turn + 1 : game.current_turn;
                 await db.games.updateCurrentTurn(gameId, newTurn, nextPlayer.id);
+                
+                // Reset movement for all units of next player
+                await db.query(`
+                    UPDATE game_units 
+                    SET movement_left = (
+                        SELECT movement_points FROM units WHERE units.id = game_units.unit_id
+                    )
+                    WHERE game_id = ? AND player_id = ?
+                `, [gameId, nextPlayer.id]);
                 
                 // Give gold to next player based on buildings
                 await givePlayerIncome(gameId, nextPlayer.id);
@@ -429,8 +711,7 @@ module.exports = (io) => {
         return state;
     }
 
-    async function generateMap(gameId, mapSize, players) {
-        const [width, height] = mapSize.split('x').map(Number);
+    async function generateMap(gameId, width, height, players) {
         const mapGenerator = require('../utils/mapGenerator');
         
         try {
@@ -443,15 +724,36 @@ module.exports = (io) => {
 
     async function givePlayerIncome(gameId, playerId) {
         try {
-            // This would calculate income based on buildings owned
-            // For now, give base income of 100 gold per turn
-            const player = await db.query('SELECT gold FROM game_players WHERE id = ?', [playerId]);
-            const currentGold = player[0]?.gold || 0;
-            const newGold = currentGold + 100; // Base income
+            // Calculate income based on buildings owned
+            const buildings = await db.query(`
+                SELECT COUNT(*) as count, building_type_id
+                FROM game_maps 
+                WHERE game_id = ? AND building_owner_id = ?
+                GROUP BY building_type_id
+            `, [gameId, playerId]);
             
-            await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [newGold, playerId]);
+            let income = 50; // Base income
+            
+            buildings.forEach(building => {
+                if (building.building_type_id === 1) { // Village
+                    income += building.count * 30;
+                } else if (building.building_type_id === 2) { // Castle
+                    income += building.count * 50;
+                }
+            });
+            
+            // Update player gold
+            await db.query('UPDATE game_players SET gold = gold + ? WHERE id = ?', [income, playerId]);
+            
+            console.log(`Player ${playerId} received ${income} gold income`);
+            
         } catch (error) {
             console.error('Error giving player income:', error);
         }
+    }
+
+    async function getTierBonus(tierLevel) {
+        const bonuses = { 1: 0, 2: 0.2, 3: 0.4 };
+        return bonuses[tierLevel] || 0;
     }
 };
