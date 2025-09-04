@@ -138,9 +138,12 @@ module.exports = (io) => {
                 // Check if all players have confirmed their races
                 const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
                 if (allConfirmed) {
-                    // Start map generation and move to game
+                    // ✅ SPÄTER: Kartengenerierung implementieren
+                    // await db.games.updateStatus(gameId, 'playing');
+                    // await generateMap(gameId, gameState.game.map_size, gameState.players);
+                    
+                    // Für jetzt: Direkte Weiterleitung zum Spiel
                     await db.games.updateStatus(gameId, 'playing');
-                    await generateMap(gameId, gameState.game.map_size, gameState.players);
                     
                     io.to(`game-${gameId}`).emit('map-generation-complete', {
                         redirectUrl: `/game/${gameId}`

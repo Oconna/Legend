@@ -300,9 +300,13 @@ class GameLobby {
     handleGameStarted(data) {
         this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
         
+        // ✅ WICHTIG: isLeaving auf false setzen für Rassenauswahl-Übergang
+        this.isLeaving = false;
+        
         setTimeout(() => {
-            Utils.redirectToGame(data.redirectUrl, this.playerName);
-        }, 2000);
+            // Direkte Weiterleitung ohne isLeaving flag zu setzen
+            window.location.href = data.redirectUrl;
+        }, 1500);
     }
 
     handlePlayerLeft(data) {

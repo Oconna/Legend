@@ -455,46 +455,19 @@ class RaceSelection {
     }
 
     handleMapGenerationComplete(data) {
-        this.showMapGenerationProgress();
+        // ✅ ENTFERNT: Kartengenerierung wird später implementiert
+        // Für jetzt: Direkter Sprung zum Spiel nach Rassenbestätigung
+        console.log('Map generation would start here - implementing later');
         
+        Utils.showSuccess('Alle Rassen bestätigt! Weiterleitung zum Spiel...');
         setTimeout(() => {
-            Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
-            setTimeout(() => {
-                Utils.redirectToGame(data.redirectUrl, this.playerName);
-            }, 1500);
-        }, 3000);
+            window.location.href = data.redirectUrl;
+        }, 2000);
     }
 
     showMapGenerationProgress() {
-        const overlay = document.getElementById('loading-overlay');
-        const loadingText = document.getElementById('loading-text');
-        const progressBar = document.getElementById('map-progress');
-        const progressText = document.getElementById('progress-text');
-        
-        if (overlay) overlay.classList.remove('hidden');
-        
-        // Simulate progress
-        let progress = 0;
-        const steps = [
-            { progress: 20, text: 'Initialisiere Terrain...' },
-            { progress: 40, text: 'Platziere Landschaften...' },
-            { progress: 60, text: 'Generiere Gebäude...' },
-            { progress: 80, text: 'Platziere Starteinheiten...' },
-            { progress: 100, text: 'Finalisiere Karte...' }
-        ];
-
-        let currentStep = 0;
-        const interval = setInterval(() => {
-            if (currentStep < steps.length) {
-                const step = steps[currentStep];
-                if (progressBar) progressBar.style.width = `${step.progress}%`;
-                if (progressText) progressText.textContent = step.text;
-                currentStep++;
-            } else {
-                clearInterval(interval);
-                if (progressText) progressText.textContent = 'Bereit zum Spielen!';
-            }
-        }, 600);
+        // ✅ ENTFERNT: Wird später implementiert
+        console.log('Map generation progress - implementing later');
     }
 
     backToLobby() {
