@@ -1,23 +1,54 @@
 const db = require('../database');
 
 module.exports = (io) => {
+    // ✅ TRACKING AKTIVER VERBINDUNGEN
+    const activeConnections = new Map(); // gameId -> Set of socket.ids
+    
     io.on('connection', (socket) => {
         console.log('User connected:', socket.id);
 
-        // Join a game room
+        // ✅ VERBESSERTE JOIN-GAME BEHANDLUNG
         socket.on('join-game', async (data) => {
             const { gameId, playerName } = data;
-            socket.join(`game-${gameId}`);
-            socket.gameId = gameId;
-            socket.playerName = playerName;
-
+            
             try {
-                // Get updated game state and broadcast to all players in the game
+                // Prüfen ob Spiel existiert
                 const gameState = await getGameState(gameId);
-                io.to(`game-${gameId}`).emit('game-state-update', gameState);
+                if (!gameState || !gameState.game) {
+                    socket.emit('error', { message: 'Game not found' });
+                    return;
+                }
+
+                // Prüfen ob Spieler bereits im Spiel ist
+                const existingPlayer = gameState.players.find(p => p.player_name === playerName);
+                
+                if (!existingPlayer) {
+                    // Spieler ist nicht im Spiel - das ist ein Problem
+                    console.warn(`Player ${playerName} trying to join room for game ${gameId} but not in player list`);
+                    socket.emit('error', { message: 'You are not a member of this game' });
+                    return;
+                }
+
+                // Socket zu Spiel-Room hinzufügen
+                socket.join(`game-${gameId}`);
+                socket.gameId = gameId;
+                socket.playerName = playerName;
+
+                // Aktive Verbindungen tracken
+                if (!activeConnections.has(gameId)) {
+                    activeConnections.set(gameId, new Set());
+                }
+                activeConnections.get(gameId).add(socket.id);
+
+                console.log(`Player ${playerName} joined room for game ${gameId}`);
+
+                // Aktuellen Game State an alle Spieler senden
+                const updatedGameState = await getGameState(gameId);
+                io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
+
             } catch (error) {
-                console.error('Error joining game:', error);
-                socket.emit('error', { message: 'Failed to join game' });
+                console.error('Error in join-game:', error);
+                socket.emit('error', { message: 'Failed to join game room' });
             }
         });
 
@@ -145,6 +176,15 @@ module.exports = (io) => {
                 const { gameId, playerName } = data;
                 await handlePlayerLeave(gameId, playerName, io, false);
                 socket.leave(`game-${gameId}`);
+                
+                // Remove from active connections
+                if (activeConnections.has(gameId)) {
+                    activeConnections.get(gameId).delete(socket.id);
+                    if (activeConnections.get(gameId).size === 0) {
+                        activeConnections.delete(gameId);
+                    }
+                }
+                
             } catch (error) {
                 console.error('Error leaving game:', error);
                 socket.emit('error', { message: 'Failed to leave game' });
@@ -184,20 +224,40 @@ module.exports = (io) => {
             }
         });
 
-        // Disconnect handler
-        socket.on('disconnect', () => {
-            console.log('User disconnected:', socket.id);
+        // ✅ VERBESSERTE DISCONNECT BEHANDLUNG
+        socket.on('disconnect', (reason) => {
+            console.log('User disconnected:', socket.id, 'Reason:', reason);
             
-            // If user was in a game, handle it as leaving the game
-            if (socket.gameId && socket.playerName) {
+            // Remove from active connections
+            if (socket.gameId && activeConnections.has(socket.gameId)) {
+                activeConnections.get(socket.gameId).delete(socket.id);
+                if (activeConnections.get(socket.gameId).size === 0) {
+                    activeConnections.delete(socket.gameId);
+                }
+            }
+            
+            // Only handle as leave if it's not a client-side disconnect (page refresh)
+            if (socket.gameId && socket.playerName && reason !== 'client namespace disconnect') {
                 // Use setTimeout to allow for reconnection attempts
                 setTimeout(async () => {
                     try {
-                        await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
+                        // Check if player has reconnected
+                        const hasReconnected = activeConnections.has(socket.gameId) && 
+                            Array.from(activeConnections.get(socket.gameId)).some(socketId => {
+                                const connectedSocket = io.sockets.sockets.get(socketId);
+                                return connectedSocket && connectedSocket.playerName === socket.playerName;
+                            });
+                        
+                        if (!hasReconnected) {
+                            console.log(`Player ${socket.playerName} did not reconnect, handling as disconnect`);
+                            await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
+                        } else {
+                            console.log(`Player ${socket.playerName} successfully reconnected`);
+                        }
                     } catch (error) {
                         console.error('Error handling disconnect cleanup:', error);
                     }
-                }, 10000); // 10 seconds grace period for reconnection
+                }, 15000); // 15 seconds grace period for reconnection
             }
         });
     });
@@ -226,14 +286,17 @@ module.exports = (io) => {
             const wasHost = leavingPlayer.is_host;
             console.log(`Player ${playerName} was host: ${wasHost}`);
 
-            // Remove player from database
-            await db.players.removeFromGame(gameId, playerName);
+            // Use the improved database function for safe removal
+            const removeResult = await db.players.removeWithHostTransfer(gameId, playerName);
+            
+            if (!removeResult.success) {
+                console.error('Failed to remove player:', removeResult.error);
+                return;
+            }
 
-            // Check remaining player count
-            const remainingPlayerCount = await db.games.getPlayerCount(gameId);
-            console.log(`Remaining players: ${remainingPlayerCount}`);
+            console.log(`Remaining players: ${removeResult.remainingPlayerCount}`);
 
-            if (remainingPlayerCount === 0) {
+            if (removeResult.remainingPlayerCount === 0) {
                 // Delete the game
                 await db.games.deleteGame(gameId);
                 console.log(`Game ${gameId} deleted - no players remaining`);
@@ -243,32 +306,22 @@ module.exports = (io) => {
             // Get updated game state after player removal
             const gameStateAfter = await getGameState(gameId);
             
-            if (wasHost && gameStateAfter.players.length > 0) {
-                // Transfer host to next player
-                const newHost = await transferHostStatus(gameId, gameStateAfter.players);
+            if (removeResult.hostTransfer) {
+                console.log(`Host transferred to: ${removeResult.hostTransfer.newHostName}`);
                 
-                if (newHost) {
-                    console.log(`Host transferred to: ${newHost.player_name}`);
-                    
-                    // Get final game state with updated host info
-                    const finalGameState = await getGameState(gameId);
-                    
-                    // Notify all remaining players
-                    io.to(`game-${gameId}`).emit('player-left', { 
-                        playerName,
-                        gameState: finalGameState,
-                        newHost: newHost.player_name,
-                        wasHost: true,
-                        disconnected: isDisconnect
-                    });
-                    
-                    io.to(`game-${gameId}`).emit('new-host-assigned', {
-                        newHostName: newHost.player_name,
-                        message: `${newHost.player_name} ist jetzt der neue Host! ${isDisconnect ? `(${playerName} ist disconnected)` : ''}`
-                    });
-                } else {
-                    console.error('Failed to transfer host status');
-                }
+                // Notify all remaining players
+                io.to(`game-${gameId}`).emit('player-left', { 
+                    playerName,
+                    gameState: gameStateAfter,
+                    newHost: removeResult.hostTransfer.newHostName,
+                    wasHost: true,
+                    disconnected: isDisconnect
+                });
+                
+                io.to(`game-${gameId}`).emit('new-host-assigned', {
+                    newHostName: removeResult.hostTransfer.newHostName,
+                    message: `${removeResult.hostTransfer.newHostName} ist jetzt der neue Host! ${isDisconnect ? `(${playerName} ist disconnected)` : ''}`
+                });
             } else {
                 // Normal player left (not host)
                 io.to(`game-${gameId}`).emit('player-left', { 
@@ -285,61 +338,7 @@ module.exports = (io) => {
         }
     }
 
-    // Neue, robuste Host-Übertragungsfunktion
-    async function transferHostStatus(gameId, remainingPlayers) {
-        const connection = await db.getConnection();
-        
-        try {
-            await connection.beginTransaction();
-            
-            // Select the first remaining player as new host (by player order)
-            const newHost = remainingPlayers.sort((a, b) => a.player_order - b.player_order)[0];
-            
-            console.log(`Transferring host to player ID ${newHost.id} (${newHost.player_name})`);
-            
-            // 1. Remove host status from all players in this game
-            await connection.execute(
-                'UPDATE game_players SET is_host = FALSE WHERE game_id = ?', 
-                [gameId]
-            );
-            
-            // 2. Set new host
-            await connection.execute(
-                'UPDATE game_players SET is_host = TRUE WHERE game_id = ? AND id = ?', 
-                [gameId, newHost.id]
-            );
-            
-            // 3. Update game table host_player field
-            await connection.execute(
-                'UPDATE games SET host_player = ? WHERE id = ?',
-                [newHost.player_name, gameId]
-            );
-            
-            // 4. Verify the changes
-            const [verifyResult] = await connection.execute(
-                'SELECT player_name, is_host FROM game_players WHERE game_id = ? AND is_host = TRUE',
-                [gameId]
-            );
-            
-            if (verifyResult.length !== 1 || verifyResult[0].player_name !== newHost.player_name) {
-                throw new Error('Host transfer verification failed');
-            }
-            
-            await connection.commit();
-            console.log(`Host successfully transferred to ${newHost.player_name}`);
-            
-            return newHost;
-            
-        } catch (error) {
-            await connection.rollback();
-            console.error('Error transferring host status:', error);
-            throw error;
-        } finally {
-            connection.release();
-        }
-    }
-
-    // Bestehende Helper-Funktionen bleiben unverändert
+    // Bestehende Helper-Funktionen
     async function getGameState(gameId) {
         const game = await db.games.findById(gameId);
         const players = await db.players.findByGame(gameId);

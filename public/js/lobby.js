@@ -7,6 +7,9 @@ class GameLobby {
         this.gameData = null;
         this.isReady = false;
         this.isHost = false;
+        this.isLeaving = false; // ✅ Flag to track intentional leaving
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 3;
         
         this.init();
     }
@@ -19,9 +22,56 @@ class GameLobby {
         }
 
         this.bindEvents();
+        this.setupReconnectionHandling();
         this.joinGameRoom();
         this.loadGameData();
         this.loadChatHistory();
+    }
+
+    // ✅ NEUE RECONNECTION-BEHANDLUNG
+    setupReconnectionHandling() {
+        // Handle socket disconnection
+        this.socket.on('disconnect', (reason) => {
+            console.log('Socket disconnected:', reason);
+            
+            if (!this.isLeaving && reason !== 'io client disconnect') {
+                this.showReconnectingOverlay();
+                this.attemptReconnection();
+            }
+        });
+
+        // Handle successful reconnection
+        this.socket.on('connect', () => {
+            console.log('Socket connected/reconnected');
+            this.hideReconnectingOverlay();
+            this.reconnectAttempts = 0;
+            
+            // Rejoin the game room after reconnection
+            if (this.gameId && this.playerName && !this.isLeaving) {
+                this.joinGameRoom();
+                this.loadGameData();
+            }
+        });
+
+        // Handle connection errors
+        this.socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            this.reconnectAttempts++;
+            
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                this.showConnectionFailedOverlay();
+            }
+        });
+    }
+
+    attemptReconnection() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts && !this.isLeaving) {
+            setTimeout(() => {
+                if (!this.socket.connected && !this.isLeaving) {
+                    this.socket.connect();
+                }
+            }, 2000 * (this.reconnectAttempts + 1)); // Progressive delay
+        }
     }
 
     bindEvents() {
@@ -42,7 +92,6 @@ class GameLobby {
             this.handlePlayerLeft(data);
         });
 
-        // ✅ VERBESSERTE HOST-ÜBERTRAGUNG EVENTS
         this.socket.on('new-host-assigned', (data) => {
             this.handleNewHostAssigned(data);
         });
@@ -90,37 +139,100 @@ class GameLobby {
             sendChat.addEventListener('click', () => this.sendChatMessage());
         }
 
-        // Handle page unload
-        window.addEventListener('beforeunload', () => {
-            this.socket.emit('leave-game', {
-                gameId: this.gameId,
-                playerName: this.playerName
-            });
+        // ✅ VERBESSERTE PAGE UNLOAD BEHANDLUNG
+        window.addEventListener('beforeunload', (e) => {
+            if (!this.isLeaving) {
+                // Only warn for intentional navigation, not for reload
+                const isReload = e.type === 'beforeunload' && 
+                    (e.ctrlKey || e.metaKey || e.which === 116 || e.which === 82);
+                
+                if (!isReload) {
+                    // Set flag to indicate we're leaving intentionally
+                    this.isLeaving = true;
+                    this.socket.emit('leave-game', {
+                        gameId: this.gameId,
+                        playerName: this.playerName
+                    });
+                }
+            }
+        });
+
+        // ✅ NEUE VISIBILITY CHANGE BEHANDLUNG
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !this.isLeaving) {
+                // Page became visible again - check if still in game
+                this.verifyGameMembership();
+            }
         });
     }
 
+    // ✅ NEUE FUNKTION: Überprüfen ob Spieler noch im Spiel ist
+    async verifyGameMembership() {
+        try {
+            const gameState = await Utils.get(`/api/games/${this.gameId}`);
+            const playerInGame = gameState.players.find(p => p.player_name === this.playerName);
+            
+            if (!playerInGame) {
+                // Player is no longer in the game
+                Utils.showError('Du bist nicht mehr in diesem Spiel. Weiterleitung zur Startseite...');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+                return;
+            }
+            
+            // Update game state if player is still in game
+            this.handleGameStateUpdate(gameState);
+            
+        } catch (error) {
+            console.error('Error verifying game membership:', error);
+        }
+    }
+
     joinGameRoom() {
-        this.socket.emit('join-game', {
-            gameId: this.gameId,
-            playerName: this.playerName
-        });
+        if (this.socket.connected) {
+            this.socket.emit('join-game', {
+                gameId: this.gameId,
+                playerName: this.playerName
+            });
+        }
     }
 
     async loadGameData() {
         try {
             const data = await Utils.get(`/api/games/${this.gameId}`);
+            
+            // ✅ VERBESSERTE VALIDIERUNG
+            if (!data || !data.game) {
+                throw new Error('Spiel nicht gefunden');
+            }
+
+            // Check if player is in the game
+            const currentPlayer = data.players.find(p => p.player_name === this.playerName);
+            if (!currentPlayer) {
+                Utils.showError('Du bist nicht in diesem Spiel. Weiterleitung zur Startseite...');
+                setTimeout(() => window.location.href = '/', 2000);
+                return;
+            }
+
             this.gameData = data;
             this.updateGameInfo();
             this.updatePlayersList(data.players);
             
-            // Check if current player is host
-            const currentPlayer = data.players.find(p => p.player_name === this.playerName);
-            this.isHost = currentPlayer?.is_host || false;
+            // Update current player status
+            this.isReady = currentPlayer.is_ready;
+            this.isHost = currentPlayer.is_host || false;
             this.updateHostControls();
+            this.updateReadyButton();
             
         } catch (error) {
             Utils.showError('Fehler beim Laden der Spieldaten');
             console.error('Error loading game data:', error);
+            
+            // If game not found, redirect to home
+            if (error.message.includes('404') || error.message.includes('nicht gefunden')) {
+                setTimeout(() => window.location.href = '/', 2000);
+            }
         }
     }
 
@@ -148,17 +260,27 @@ class GameLobby {
     }
 
     handleGameStateUpdate(gameState) {
+        // ✅ VERBESSERTE GAME STATE BEHANDLUNG
+        if (!gameState || !gameState.players) {
+            console.warn('Invalid game state received:', gameState);
+            return;
+        }
+
         this.gameData = gameState;
         this.updateGameInfo();
         this.updatePlayersList(gameState.players);
         
-        // ✅ VERBESSERTE HOST-STATUS AKTUALISIERUNG
+        // Update current player status
         const currentPlayer = gameState.players.find(p => p.player_name === this.playerName);
         if (currentPlayer) {
             this.isReady = currentPlayer.is_ready;
-            this.isHost = currentPlayer.is_host || false; // Wichtig: Host-Status aktualisieren
+            this.isHost = currentPlayer.is_host || false;
             this.updateReadyButton();
             this.updateHostControls();
+        } else {
+            // Current player not found in game - they might have been removed
+            console.warn('Current player not found in game state');
+            this.verifyGameMembership();
         }
     }
 
@@ -184,7 +306,6 @@ class GameLobby {
     }
 
     handlePlayerLeft(data) {
-        // ✅ VERBESSERTE BEHANDLUNG VON SPIELER-VERLASSEN
         if (data.wasHost && data.newHost) {
             const wasTransferredToMe = data.newHost === this.playerName;
             
@@ -211,7 +332,6 @@ class GameLobby {
         this.updateHostControls();
     }
 
-    // ✅ NEUE METHODE FÜR HOST-ÜBERTRAGUNG
     handleNewHostAssigned(data) {
         console.log('New host assigned:', data);
         
@@ -308,7 +428,6 @@ class GameLobby {
         }
     }
 
-    // ✅ VERBESSERTE HOST-KONTROLLEN
     updateHostControls() {
         const hostControls = document.getElementById('host-controls');
         const startBtn = document.getElementById('start-game');
@@ -325,7 +444,7 @@ class GameLobby {
             const minPlayers = (this.gameData?.players.length || 0) >= 2;
             
             startBtn.disabled = !allReady || !minPlayers;
-            startBtn.classList.remove('waiting-pulse'); // Reset pulse
+            startBtn.classList.remove('waiting-pulse');
             
             if (!minPlayers) {
                 startBtn.textContent = '🚀 Warte auf mehr Spieler';
@@ -378,6 +497,10 @@ class GameLobby {
 
     leaveGame() {
         Utils.hideModal('leave-modal');
+        
+        // ✅ Set leaving flag before emitting leave event
+        this.isLeaving = true;
+        
         this.showLoadingOverlay('Verlasse Spiel...', 'Weiterleitung zur Startseite...');
         
         this.socket.emit('leave-game', {
@@ -449,15 +572,32 @@ class GameLobby {
         }
     }
 
-    // ✅ DEBUG-METHODE FÜR ENTWICKLUNG
+    // ✅ NEUE RECONNECTION OVERLAYS
+    showReconnectingOverlay() {
+        this.showLoadingOverlay('Verbindung verloren...', 'Versuche erneut zu verbinden...');
+    }
+
+    hideReconnectingOverlay() {
+        this.hideLoadingOverlay();
+    }
+
+    showConnectionFailedOverlay() {
+        this.showLoadingOverlay(
+            'Verbindung fehlgeschlagen', 
+            'Bitte lade die Seite neu oder kehre zur Startseite zurück'
+        );
+    }
+
+    // Debug method
     debugStatus() {
         console.log('=== LOBBY DEBUG STATUS ===');
         console.log('Game ID:', this.gameId);
         console.log('Player Name:', this.playerName);
         console.log('Is Host:', this.isHost);
         console.log('Is Ready:', this.isReady);
-        console.log('Game Data:', this.gameData);
+        console.log('Is Leaving:', this.isLeaving);
         console.log('Socket Connected:', this.socket.connected);
+        console.log('Game Data:', this.gameData);
         console.log('========================');
     }
 }

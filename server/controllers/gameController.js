@@ -80,7 +80,7 @@ router.get('/:gameId', async (req, res) => {
     }
 });
 
-// POST /api/games/:gameId/join - Join a game
+// ✅ VERBESSERTE JOIN-LOGIK
 router.post('/:gameId/join', async (req, res) => {
     try {
         const gameId = req.params.gameId;
@@ -100,37 +100,85 @@ router.post('/:gameId/join', async (req, res) => {
             return res.status(400).json({ error: 'Game is not in lobby state' });
         }
 
-        // Check current player count
+        // Get current players
         const currentPlayers = await db.players.findByGame(gameId);
+        
+        // ✅ PRÜFEN OB SPIELER BEREITS EXISTIERT (REJOIN-SZENARIO)
+        const existingPlayer = currentPlayers.find(p => p.player_name === playerName);
+        
+        if (existingPlayer) {
+            // Player already exists in game - this is a rejoin attempt
+            console.log(`Player ${playerName} rejoining game ${gameId}`);
+            
+            // Allow rejoin - just return success
+            return res.json({ 
+                message: 'Rejoined game successfully',
+                redirectUrl: `/lobby/${gameId}?player=${encodeURIComponent(playerName)}`,
+                isRejoin: true
+            });
+        }
+
+        // New player joining - check capacity
         if (currentPlayers.length >= game.max_players) {
             return res.status(400).json({ error: 'Game is full' });
         }
 
-        // Check if player name is already taken
-        const existingPlayer = currentPlayers.find(p => p.player_name === playerName);
-        if (existingPlayer) {
-            return res.status(400).json({ error: 'Player name already taken' });
-        }
-
-        // Determine if player should be host (if no players in game currently)
-        const shouldBeHost = currentPlayers.length === 0;
+        // Determine if player should be host (if no current host exists)
+        const currentHost = currentPlayers.find(p => p.is_host);
+        const shouldBeHost = !currentHost;
         
         // If becoming host, also update the game's host_player field
         if (shouldBeHost) {
             await db.query('UPDATE games SET host_player = ? WHERE id = ?', [playerName, gameId]);
         }
 
-        // Add player to game
+        // Add new player to game
         await db.players.addToGame(gameId, playerName, shouldBeHost);
+
+        console.log(`Player ${playerName} joined game ${gameId}${shouldBeHost ? ' as host' : ''}`);
 
         res.json({ 
             message: 'Joined game successfully',
-            redirectUrl: `/lobby/${gameId}?player=${encodeURIComponent(playerName)}`
+            redirectUrl: `/lobby/${gameId}?player=${encodeURIComponent(playerName)}`,
+            isNewPlayer: true,
+            isHost: shouldBeHost
         });
 
     } catch (error) {
         console.error('Error joining game:', error);
         res.status(500).json({ error: 'Failed to join game' });
+    }
+});
+
+// ✅ NEUE ENDPOINT: CHECK PLAYER MEMBERSHIP
+router.get('/:gameId/players/:playerName/status', async (req, res) => {
+    try {
+        const { gameId, playerName } = req.params;
+        
+        const game = await db.games.findById(gameId);
+        if (!game) {
+            return res.status(404).json({ error: 'Game not found' });
+        }
+
+        const players = await db.players.findByGame(gameId);
+        const player = players.find(p => p.player_name === playerName);
+        
+        if (!player) {
+            return res.status(404).json({ 
+                error: 'Player not found in game',
+                inGame: false
+            });
+        }
+
+        res.json({
+            inGame: true,
+            player: player,
+            gameStatus: game.status
+        });
+
+    } catch (error) {
+        console.error('Error checking player status:', error);
+        res.status(500).json({ error: 'Failed to check player status' });
     }
 });
 
@@ -188,6 +236,19 @@ router.get('/:gameId/buildings', async (req, res) => {
     } catch (error) {
         console.error('Error fetching building types:', error);
         res.status(500).json({ error: 'Failed to fetch building types' });
+    }
+});
+
+// ✅ NEUE ENDPOINT: GAME REPAIR
+router.post('/:gameId/repair', async (req, res) => {
+    try {
+        const gameId = req.params.gameId;
+        const repairResult = await db.games.validateAndRepair(gameId);
+        
+        res.json(repairResult);
+    } catch (error) {
+        console.error('Error repairing game:', error);
+        res.status(500).json({ error: 'Failed to repair game' });
     }
 });
 
