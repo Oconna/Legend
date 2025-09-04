@@ -208,8 +208,16 @@ router.get('/:gameId/races/:raceId/units', async (req, res) => {
 // GET /api/games/:gameId/chat - Get chat messages
 router.get('/:gameId/chat', async (req, res) => {
     try {
-        const gameId = req.params.gameId;
-        const messages = await db.chat.getMessages(gameId);
+        const gameId = parseInt(req.params.gameId);
+        const limit = parseInt(req.query.limit) || 50;
+        
+        // ✅ VALIDATION: Prüfe ob gameId valide ist
+        if (!gameId || isNaN(gameId)) {
+            return res.status(400).json({ error: 'Invalid game ID' });
+        }
+        
+        console.log('Fetching chat messages for game:', gameId, 'limit:', limit);
+        const messages = await db.chat.getMessages(gameId, limit);
         res.json(messages);
     } catch (error) {
         console.error('Error fetching chat messages:', error);
