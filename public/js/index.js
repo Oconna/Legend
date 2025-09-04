@@ -2,6 +2,8 @@
 class GameLobbyIndex {
     constructor() {
         this.socket = io();
+        this.currentPlayerName = '';
+        this.isPlayerNameValid = false;
         this.init();
     }
 
@@ -9,9 +11,22 @@ class GameLobbyIndex {
         this.bindEvents();
         this.loadAvailableGames();
         this.restorePlayerName();
+        this.updateUI();
     }
 
     bindEvents() {
+        // Player name input
+        const playerNameInput = document.getElementById('player-name');
+        if (playerNameInput) {
+            playerNameInput.addEventListener('input', Utils.debounce(() => {
+                this.handlePlayerNameChange();
+            }, 300));
+
+            playerNameInput.addEventListener('blur', () => {
+                this.validatePlayerName();
+            });
+        }
+
         // Create game form
         const createForm = document.getElementById('create-game-form');
         if (createForm) {
@@ -24,44 +39,134 @@ class GameLobbyIndex {
             refreshBtn.addEventListener('click', () => this.loadAvailableGames());
         }
 
-        // Player name input for joining games
-        const joinPlayerInput = document.getElementById('join-player-name');
-        if (joinPlayerInput) {
-            joinPlayerInput.addEventListener('input', Utils.debounce(() => {
-                this.validateJoinPlayerName();
-            }, 300));
-        }
-
-        // Auto-refresh games every 10 seconds
-        setInterval(() => this.loadAvailableGames(), 10000);
+        // Auto-refresh games every 15 seconds
+        setInterval(() => this.loadAvailableGames(), 15000);
     }
 
     restorePlayerName() {
         const savedName = Utils.getFromStorage('playerName');
         if (savedName) {
             const playerNameInput = document.getElementById('player-name');
-            const joinPlayerNameInput = document.getElementById('join-player-name');
-            
-            if (playerNameInput) playerNameInput.value = savedName;
-            if (joinPlayerNameInput) joinPlayerNameInput.value = savedName;
+            if (playerNameInput) {
+                playerNameInput.value = savedName;
+                this.currentPlayerName = savedName;
+                this.validatePlayerName();
+            }
         }
+    }
+
+    handlePlayerNameChange() {
+        const playerNameInput = document.getElementById('player-name');
+        const playerName = playerNameInput?.value?.trim() || '';
+        
+        this.currentPlayerName = playerName;
+        this.validatePlayerName();
+        this.updateUI();
+    }
+
+    validatePlayerName() {
+        const playerNameInput = document.getElementById('player-name');
+        if (!playerNameInput) return false;
+
+        const playerName = this.currentPlayerName;
+        const error = Utils.validatePlayerName(playerName);
+        const formGroup = playerNameInput.closest('.form-group');
+
+        if (error && playerName.length > 0) {
+            Utils.showFieldError(playerNameInput, error);
+            formGroup?.classList.add('invalid');
+            formGroup?.classList.remove('valid');
+            this.isPlayerNameValid = false;
+        } else if (playerName.length >= 2) {
+            Utils.clearFieldError(playerNameInput);
+            formGroup?.classList.add('valid');
+            formGroup?.classList.remove('invalid');
+            this.isPlayerNameValid = true;
+            
+            // Save valid player name
+            Utils.savePlayerName(playerName);
+        } else {
+            Utils.clearFieldError(playerNameInput);
+            formGroup?.classList.remove('valid', 'invalid');
+            this.isPlayerNameValid = false;
+        }
+
+        return this.isPlayerNameValid;
+    }
+
+    updateUI() {
+        this.updatePlayerNameStatus();
+        this.updateCreateGameButton();
+        this.updateGamesList();
+    }
+
+    updatePlayerNameStatus() {
+        const statusElement = document.getElementById('player-name-status');
+        if (!statusElement) return;
+
+        if (this.isPlayerNameValid) {
+            statusElement.className = 'status-indicator ready';
+            statusElement.innerHTML = `✅ Bereit als "${this.currentPlayerName}"`;
+        } else {
+            statusElement.className = 'status-indicator not-ready';
+            statusElement.innerHTML = '❌ Spielername eingeben';
+        }
+    }
+
+    updateCreateGameButton() {
+        const createButton = document.querySelector('#create-game-form button[type="submit"]');
+        const formInfo = document.querySelector('#create-game-form .form-info small');
+        
+        if (!createButton) return;
+
+        if (this.isPlayerNameValid) {
+            createButton.disabled = false;
+            createButton.textContent = '🚀 Spiel erstellen';
+            if (formInfo) {
+                formInfo.textContent = 'Alle Felder ausfüllen und erstellen';
+                formInfo.style.color = '#666';
+            }
+        } else {
+            createButton.disabled = true;
+            createButton.textContent = '🚀 Spiel erstellen';
+            if (formInfo) {
+                formInfo.textContent = 'Gib zuerst deinen Spielernamen oben ein';
+                formInfo.style.color = '#f44336';
+            }
+        }
+    }
+
+    updateGamesList() {
+        // Update existing game items to show if they can be joined
+        const gameItems = document.querySelectorAll('.game-item');
+        gameItems.forEach(gameItem => {
+            const joinBtn = gameItem.querySelector('.join-game-btn');
+            if (joinBtn) {
+                if (this.isPlayerNameValid && !joinBtn.disabled) {
+                    gameItem.classList.remove('disabled');
+                    joinBtn.style.opacity = '1';
+                } else if (!this.isPlayerNameValid) {
+                    gameItem.classList.add('disabled');
+                    joinBtn.style.opacity = '0.5';
+                }
+            }
+        });
     }
 
     async handleCreateGame(e) {
         e.preventDefault();
 
+        // Validate player name first
+        if (!this.validatePlayerName()) {
+            Utils.showError('Bitte gib einen gültigen Spielernamen ein');
+            document.getElementById('player-name')?.focus();
+            return;
+        }
+
         const formData = new FormData(e.target);
-        const playerName = formData.get('player-name')?.trim();
         const gameName = formData.get('game-name')?.trim();
         const maxPlayers = parseInt(formData.get('max-players'));
         const mapSize = formData.get('map-size');
-
-        // Validate player name
-        const nameError = Utils.validatePlayerName(playerName);
-        if (nameError) {
-            Utils.showError(nameError);
-            return;
-        }
 
         // Validate game name
         if (!gameName || gameName.length < 3) {
@@ -82,15 +187,13 @@ class GameLobbyIndex {
 
             const response = await Utils.post('/api/games', {
                 gameName,
-                playerName,
+                playerName: this.currentPlayerName,
                 maxPlayers,
                 mapSize
             });
 
             Utils.showSuccess('Spiel erfolgreich erstellt! Weiterleitung...');
             
-            // Save player name and redirect
-            Utils.savePlayerName(playerName);
             setTimeout(() => {
                 window.location.href = response.redirectUrl;
             }, 1000);
@@ -133,6 +236,9 @@ class GameLobbyIndex {
             const gameElement = this.createGameElement(game);
             gamesList.appendChild(gameElement);
         });
+
+        // Update UI state after rendering
+        this.updateGamesList();
     }
 
     createGameElement(game) {
@@ -140,8 +246,14 @@ class GameLobbyIndex {
         gameDiv.setAttribute('data-game-id', game.id);
 
         const isFull = game.current_players >= game.max_players;
+        const canJoin = this.isPlayerNameValid && !isFull;
         const statusClass = isFull ? 'full' : 'available';
         const statusText = isFull ? 'Voll' : 'Verfügbar';
+
+        // Add disabled class if player name is not valid
+        if (!canJoin) {
+            gameDiv.classList.add('disabled');
+        }
 
         gameDiv.innerHTML = `
             <div class="game-header">
@@ -169,34 +281,30 @@ class GameLobbyIndex {
                 </div>
             </div>
             <div class="game-actions">
-                <button class="btn btn-primary join-game-btn" 
-                        ${isFull ? 'disabled' : ''}>
-                    ${isFull ? 'Spiel voll' : '🎮 Beitreten'}
-                </button>
+                ${this.createJoinButton(game.id, isFull, canJoin)}
             </div>
         `;
-
-        // Add click handler for join button
-        const joinBtn = gameDiv.querySelector('.join-game-btn');
-        if (joinBtn && !isFull) {
-            joinBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.handleJoinGame(game.id);
-            });
-        }
 
         return gameDiv;
     }
 
-    async handleJoinGame(gameId) {
-        const playerNameInput = document.getElementById('join-player-name');
-        const playerName = playerNameInput?.value?.trim();
+    createJoinButton(gameId, isFull, canJoin) {
+        if (isFull) {
+            return '<button class="btn btn-secondary" disabled>Spiel voll</button>';
+        }
 
-        // Validate player name
-        const nameError = Utils.validatePlayerName(playerName);
-        if (nameError) {
-            Utils.showError(nameError);
-            playerNameInput?.focus();
+        if (!this.isPlayerNameValid) {
+            return '<button class="btn btn-primary join-game-btn" disabled style="opacity: 0.5">Spielername eingeben</button>';
+        }
+
+        return `<button class="btn btn-primary join-game-btn" onclick="gameLobbyIndex.handleJoinGame('${gameId}')">🎮 Beitreten</button>`;
+    }
+
+    async handleJoinGame(gameId) {
+        // Double-check player name validity
+        if (!this.validatePlayerName()) {
+            Utils.showError('Bitte gib einen gültigen Spielernamen ein');
+            document.getElementById('player-name')?.focus();
             return;
         }
 
@@ -208,13 +316,11 @@ class GameLobbyIndex {
                 joinBtn.textContent = 'Trete bei...';
 
                 const response = await Utils.post(`/api/games/${gameId}/join`, {
-                    playerName
+                    playerName: this.currentPlayerName
                 });
 
                 Utils.showSuccess('Spiel erfolgreich beigetreten! Weiterleitung...');
                 
-                // Save player name and redirect
-                Utils.savePlayerName(playerName);
                 setTimeout(() => {
                     window.location.href = response.redirectUrl;
                 }, 1000);
@@ -232,20 +338,6 @@ class GameLobbyIndex {
         }
     }
 
-    validateJoinPlayerName() {
-        const input = document.getElementById('join-player-name');
-        if (!input) return;
-
-        const playerName = input.value.trim();
-        const error = Utils.validatePlayerName(playerName);
-
-        if (error && playerName.length > 0) {
-            Utils.showFieldError(input, error);
-        } else {
-            Utils.clearFieldError(input);
-        }
-    }
-
     renderEmptyState() {
         const gamesList = document.getElementById('games-list');
         const emptyDiv = Utils.createElement('div', 'empty-state');
@@ -254,7 +346,7 @@ class GameLobbyIndex {
             <h3>🎯 Keine verfügbaren Spiele</h3>
             <p>Derzeit gibt es keine verfügbaren Spiele. Erstelle dein eigenes Spiel, um zu beginnen!</p>
             <button class="btn btn-primary" onclick="document.getElementById('player-name').focus()">
-                🚀 Spiel erstellen
+                👤 Spielername eingeben
             </button>
         `;
 
@@ -276,6 +368,14 @@ class GameLobbyIndex {
         Utils.clearElement(gamesList);
         gamesList.appendChild(errorDiv);
     }
+
+    // Debug method
+    debugStatus() {
+        console.log('=== INDEX DEBUG STATUS ===');
+        console.log('Current Player Name:', this.currentPlayerName);
+        console.log('Is Player Name Valid:', this.isPlayerNameValid);
+        console.log('=========================');
+    }
 }
 
 // Initialize when page loads
@@ -283,4 +383,8 @@ let gameLobbyIndex;
 
 document.addEventListener('DOMContentLoaded', () => {
     gameLobbyIndex = new GameLobbyIndex();
+    
+    // Make debug function globally available
+    window.debugIndex = () => gameLobbyIndex.debugStatus();
+    console.log('🐛 Debug function available: debugIndex()');
 });

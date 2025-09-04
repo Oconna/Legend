@@ -15,16 +15,25 @@
         </header>
 
         <main>
+            <!-- Player Name Section -->
+            <section class="player-section">
+                <div class="card">
+                    <h2>👤 Spieler-Information</h2>
+                    <div class="form-group">
+                        <label for="player-name">Dein Spielername:</label>
+                        <input type="text" id="player-name" name="player-name" required maxlength="50" placeholder="Gib deinen Namen ein...">
+                        <div class="player-name-info">
+                            <small>Dieser Name wird für Spielerstellung und Beitritt verwendet</small>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <div class="game-sections">
                 <!-- Create Game Section -->
                 <section class="game-section">
                     <h2>🎮 Neues Spiel erstellen</h2>
                     <form id="create-game-form">
-                        <div class="form-group">
-                            <label for="player-name">Dein Spielername:</label>
-                            <input type="text" id="player-name" name="player-name" required maxlength="50" placeholder="Gib deinen Namen ein...">
-                        </div>
-
                         <div class="form-group">
                             <label for="game-name">Spielname:</label>
                             <input type="text" id="game-name" name="game-name" required maxlength="100" placeholder="Wie soll das Spiel heißen?">
@@ -53,9 +62,12 @@
                             </select>
                         </div>
 
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" disabled>
                             🚀 Spiel erstellen
                         </button>
+                        <div class="form-info">
+                            <small>Gib zuerst deinen Spielernamen oben ein</small>
+                        </div>
                     </form>
                 </section>
 
@@ -63,14 +75,15 @@
                 <section class="game-section">
                     <h2>🔍 Verfügbare Spiele</h2>
                     
-                    <div class="join-form">
-                        <div class="form-group">
-                            <label for="join-player-name">Dein Spielername:</label>
-                            <input type="text" id="join-player-name" maxlength="50" placeholder="Gib deinen Namen ein...">
-                        </div>
+                    <div class="join-actions">
                         <button id="refresh-games" class="btn btn-secondary">
                             🔄 Spiele aktualisieren
                         </button>
+                        <div class="join-status">
+                            <span id="player-name-status" class="status-indicator">
+                                ❌ Spielername eingeben
+                            </span>
+                        </div>
                     </div>
 
                     <div id="games-list" class="games-list">

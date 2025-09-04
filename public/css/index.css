@@ -1,5 +1,64 @@
 /* Index page specific styles */
 
+/* Player Section */
+.player-section {
+    margin-bottom: 2rem;
+}
+
+.player-section .card {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    text-align: center;
+    padding: 2rem;
+    box-shadow: 0 4px 20px rgba(76, 175, 80, 0.3);
+}
+
+.player-section h2 {
+    color: white;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.player-section .form-group {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.player-section label {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.player-section input {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.player-section input::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.player-section input:focus {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+
+.player-name-info {
+    margin-top: 0.5rem;
+}
+
+.player-name-info small {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+}
+
+/* Game Sections */
 .game-sections {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -40,21 +99,56 @@
     margin-top: 1rem;
 }
 
+#create-game-form .btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.form-info {
+    margin-top: 0.5rem;
+}
+
+.form-info small {
+    color: #666;
+    font-size: 0.85rem;
+}
+
 /* Join game section */
-.join-form {
+.join-actions {
     display: flex;
-    gap: 1rem;
-    align-items: end;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
 }
 
-.join-form .form-group {
-    flex: 1;
-    margin-bottom: 0;
+.join-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-.join-form .btn {
-    height: fit-content;
+.status-indicator {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.status-indicator.ready {
+    background: #e8f5e8;
+    color: #4CAF50;
+}
+
+.status-indicator.not-ready {
+    background: #ffebee;
+    color: #f44336;
 }
 
 /* Games list */
@@ -76,6 +170,17 @@
     border-color: #4CAF50;
     transform: translateX(5px);
     box-shadow: 0 2px 10px rgba(76, 175, 80, 0.2);
+}
+
+.game-item.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.game-item.disabled:hover {
+    border-color: #e9ecef;
+    transform: none;
+    box-shadow: none;
 }
 
 .game-item:last-child {
@@ -155,6 +260,11 @@
     min-width: 100px;
 }
 
+.game-actions .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Empty state */
 .empty-state {
     text-align: center;
@@ -177,6 +287,21 @@
     min-height: 200px;
 }
 
+/* Player name validation states */
+.form-group.valid input {
+    border-color: #4CAF50;
+}
+
+.form-group.invalid input {
+    border-color: #f44336;
+}
+
+.field-error {
+    color: #f44336;
+    font-size: 0.9rem;
+    margin-top: 0.3rem;
+}
+
 /* Responsive design for index page */
 @media (max-width: 968px) {
     .game-sections {
@@ -184,21 +309,22 @@
         gap: 1.5rem;
     }
     
-    .join-form {
+    .join-actions {
         flex-direction: column;
-        gap: 0;
+        gap: 1rem;
+        align-items: stretch;
     }
     
-    .join-form .form-group {
-        margin-bottom: 1rem;
-    }
-    
-    .join-form .btn {
-        align-self: flex-start;
+    .join-status {
+        justify-content: center;
     }
 }
 
 @media (max-width: 600px) {
+    .player-section .card {
+        padding: 1.5rem;
+    }
+    
     .game-header {
         flex-direction: column;
         align-items: flex-start;
