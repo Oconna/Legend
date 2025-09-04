@@ -108,6 +108,16 @@ const db = {
             const sql = 'SELECT COUNT(*) as count FROM game_players WHERE game_id = ?';
             const result = await db.query(sql, [gameId]);
             return result[0]?.count || 0;
+        },
+
+        cleanupEmptyGames: async () => {
+            const sql = `
+                DELETE g FROM games g
+                LEFT JOIN game_players gp ON g.id = gp.game_id
+                WHERE gp.id IS NULL
+            `;
+            const result = await db.query(sql);
+            return result.affectedRows;
         }
     },
 

@@ -230,9 +230,17 @@ module.exports = (io) => {
                                     const updatedGameState = await getGameState(socket.gameId);
                                     if (updatedGameState.players.length > 0) {
                                         const newHost = updatedGameState.players[0];
+                                        
+                                        // Update host status in database
                                         await db.query(
-                                            'UPDATE game_players SET is_host = TRUE WHERE game_id = ? AND id = ?', 
-                                            [socket.gameId, newHost.id]
+                                            'UPDATE game_players SET is_host = ? WHERE game_id = ? AND id = ?', 
+                                            [true, socket.gameId, newHost.id]
+                                        );
+                                        
+                                        // Update game host_player field
+                                        await db.query(
+                                            'UPDATE games SET host_player = ? WHERE id = ?',
+                                            [newHost.player_name, socket.gameId]
                                         );
                                         
                                         const finalGameState = await getGameState(socket.gameId);

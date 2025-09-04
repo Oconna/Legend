@@ -210,8 +210,13 @@ class GameLobby {
         
         if (data.newHostName === this.playerName) {
             this.isHost = true;
+            Utils.showSuccess('Du bist jetzt der Host des Spiels!');
             this.updateHostControls();
+            this.updateReadyButton();
         }
+        
+        // Refresh the game data to get the updated host information
+        this.loadGameData();
     }
 
     updateGameInfo() {

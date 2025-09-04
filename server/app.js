@@ -67,6 +67,18 @@ server.listen(PORT, () => {
         .catch(err => {
             console.error('Database connection failed:', err);
         });
+
+    // Cleanup empty games every 5 minutes
+    setInterval(async () => {
+        try {
+            const deletedCount = await db.games.cleanupEmptyGames();
+            if (deletedCount > 0) {
+                console.log(`Cleaned up ${deletedCount} empty games`);
+            }
+        } catch (error) {
+            console.error('Error cleaning up empty games:', error);
+        }
+    }, 5 * 60 * 1000); // 5 minutes
 });
 
 module.exports = server;
