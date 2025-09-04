@@ -140,22 +140,21 @@ class GameLobby {
         }
 
         // ✅ VERBESSERTE PAGE UNLOAD BEHANDLUNG
-        window.addEventListener('beforeunload', (e) => {
-            if (!this.isLeaving) {
-                // Only warn for intentional navigation, not for reload
-                const isReload = e.type === 'beforeunload' && 
-                    (e.ctrlKey || e.metaKey || e.which === 116 || e.which === 82);
-                
-                if (!isReload) {
-                    // Set flag to indicate we're leaving intentionally
-                    this.isLeaving = true;
-                    this.socket.emit('leave-game', {
-                        gameId: this.gameId,
-                        playerName: this.playerName
-                    });
-                }
-            }
+window.addEventListener('beforeunload', (e) => {
+    // Don't treat game start redirection as leaving
+    if (this.gameStarting) {
+        return; // Allow navigation without triggering leave
+    }
+    
+    // Only handle actual page closes/refreshes, not programmatic navigation
+    if (!this.isLeaving) {
+        this.isLeaving = true;
+        this.socket.emit('leave-game', {
+            gameId: this.gameId,
+            playerName: this.playerName
         });
+    }
+});
 
         // ✅ NEUE VISIBILITY CHANGE BEHANDLUNG
         document.addEventListener('visibilitychange', () => {
@@ -300,24 +299,23 @@ class GameLobby {
 handleGameStarted(data) {
     console.log('Game started, transitioning to race selection...', data);
     
+    // Set flag to prevent leave event during transition
+    this.gameStarting = true;
+    this.isLeaving = false; // Ensure this is false
+    
     this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
     
-    // Clear the isLeaving flag - this is a legitimate transition
-    this.isLeaving = false;
+    // Clear any existing intervals
+    if (this.reconnectTimer) {
+        clearInterval(this.reconnectTimer);
+    }
     
-    // Clear any existing timers or intervals
-    clearInterval(this.reconnectTimer);
-    
-    // Add gameStatus to URL for better state management
-    const redirectUrl = data.redirectUrl.includes('?') 
-        ? `${data.redirectUrl}&status=race_selection&player=${encodeURIComponent(this.playerName)}`
-        : `${data.redirectUrl}?status=race_selection&player=${encodeURIComponent(this.playerName)}`;
-    
+    // ✅ IMPORTANT: Don't emit leave-game during legitimate transition
     setTimeout(() => {
-        // Don't disconnect socket - let it reconnect on new page
+        const redirectUrl = `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}&transition=start`;
         console.log('Redirecting to:', redirectUrl);
         window.location.href = redirectUrl;
-    }, 1500);
+    }, 1000); // Reduced delay
 }
 
     handlePlayerLeft(data) {

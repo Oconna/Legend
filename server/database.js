@@ -513,23 +513,43 @@ const db = {
     },
 
     // Chat queries
-    chat: {
-        addMessage: async (gameId, playerName, message) => {
-            const sql = 'INSERT INTO chat_messages (game_id, player_name, message) VALUES (?, ?, ?)';
-            return db.query(sql, [gameId, playerName, message]);
-        },
+chat: {
+    addMessage: async (gameId, playerName, message) => {
+        const sql = 'INSERT INTO chat_messages (game_id, player_name, message) VALUES (?, ?, ?)';
+        return db.query(sql, [gameId, playerName, message]);
+    },
 
-        getMessages: async (gameId, limit = 50) => {
-            const sql = `
-                SELECT * FROM chat_messages 
-                WHERE game_id = ? 
-                ORDER BY created_at DESC 
-                LIMIT ?
-            `;
-            const results = await db.query(sql, [gameId, limit]);
+    getMessages: async (gameId, limit = 50) => {
+        // ✅ FIX: Ensure both parameters are properly typed
+        const gameIdNum = parseInt(gameId);
+        const limitNum = parseInt(limit);
+        
+        // Validate inputs
+        if (isNaN(gameIdNum) || gameIdNum <= 0) {
+            console.error('Invalid gameId for chat messages:', gameId);
+            return [];
+        }
+        
+        if (isNaN(limitNum) || limitNum <= 0) {
+            limitNum = 50;
+        }
+
+        const sql = `
+            SELECT * FROM chat_messages 
+            WHERE game_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        `;
+        
+        try {
+            const results = await db.query(sql, [gameIdNum, limitNum]);
             return results.reverse(); // Return in chronological order
+        } catch (error) {
+            console.error('Error fetching chat messages for game', gameIdNum, ':', error);
+            return []; // Return empty array on error to prevent page crashes
         }
     }
+}
 };
 
 module.exports = db;

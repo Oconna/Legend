@@ -22,12 +22,71 @@ init() {
         return;
     }
 
+    console.log(`🎯 Initializing race selection for game ${this.gameId}, player ${this.playerName}`);
+    
     this.bindEvents();
-    this.setupSocketReconnection(); // Add this line
-    this.verifyGameAccess(); // Change this line
+    this.setupConnectionHandling();
+    
+    // ✅ Wait for socket connection before proceeding
+    if (this.socket.connected) {
+        this.startLoadSequence();
+    } else {
+        this.socket.on('connect', () => {
+            console.log('✅ Socket connected, starting load sequence');
+            this.startLoadSequence();
+        });
+    }
 }
 
-// Add this new method
+setupConnectionHandling() {
+    this.socket.on('connect', () => {
+        console.log('🔌 Socket connected in race selection');
+    });
+
+    this.socket.on('disconnect', (reason) => {
+        console.log('🔌 Socket disconnected:', reason);
+        if (reason !== 'io client disconnect') {
+            Utils.showError('Verbindung verloren. Versuche zu reconnectieren...');
+        }
+    });
+
+    this.socket.on('connect_error', (error) => {
+        console.error('❌ Socket connection error:', error);
+        Utils.showError('Verbindungsfehler. Bitte Seite neu laden.');
+    });
+}
+
+async startLoadSequence() {
+    try {
+        // Step 1: Verify game exists and player has access
+        console.log('📝 Step 1: Verifying game access...');
+        await this.verifyGameAccess();
+        
+        // Step 2: Join socket room
+        console.log('🏠 Step 2: Joining game room...');
+        this.joinGameRoom();
+        
+        // Step 3: Load races
+        console.log('🛡️ Step 3: Loading races...');
+        await this.loadRaces();
+        
+        // Step 4: Load chat
+        console.log('💬 Step 4: Loading chat...');
+        await this.loadChatHistory();
+        
+        console.log('✅ Race selection fully initialized');
+        
+    } catch (error) {
+        console.error('❌ Error in load sequence:', error);
+        Utils.showError('Fehler beim Laden der Rassenauswahl: ' + error.message);
+        
+        // Fallback to lobby after 3 seconds
+        setTimeout(() => {
+            window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+        }, 3000);
+    }
+}
+
 setupSocketReconnection() {
     this.socket.on('connect', () => {
         console.log('Socket connected in race selection');
@@ -50,30 +109,38 @@ setupSocketReconnection() {
 // Replace loadGameData() with verifyGameAccess()
 async verifyGameAccess() {
     try {
-        console.log(`Verifying access to game ${this.gameId} for player ${this.playerName}...`);
+        const data = await Utils.get(`/api/games/${this.gameId}`);
         
-        // First check if player is still in the game
-        const playerStatus = await Utils.get(`/api/games/${this.gameId}/players/${encodeURIComponent(this.playerName)}/status`);
-        
-        if (!playerStatus.inGame) {
-            throw new Error('Du bist nicht mehr in diesem Spiel');
+        if (!data || !data.game) {
+            throw new Error('Spiel nicht gefunden');
         }
 
-        // Then load game data
-        await this.loadGameData();
-        await this.loadRaces();
-        await this.loadChatHistory();
-        
-        // Join socket room after verification
-        this.joinGameRoom();
+        // ✅ IMPORTANT: Allow both lobby and race_selection status
+        if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
+            throw new Error(`Spiel ist in falscher Phase: ${data.game.status}`);
+        }
 
-    } catch (error) {
-        console.error('Error verifying game access:', error);
-        Utils.showError('Fehler beim Zugriff auf das Spiel: ' + error.message);
+        // Check if player is in the game
+        const currentPlayer = data.players.find(p => p.player_name === this.playerName);
+        if (!currentPlayer) {
+            throw new Error('Du bist nicht in diesem Spiel');
+        }
+
+        this.gameData = data;
+        this.updateGameInfo();
         
-        setTimeout(() => {
-            window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-        }, 3000);
+        // Check if player already confirmed race
+        if (currentPlayer.race_confirmed) {
+            this.hasConfirmed = true;
+            this.selectedRace = currentPlayer.race_id;
+            this.showWaitingForConfirmation();
+        }
+        
+        console.log('✅ Game access verified successfully');
+        
+    } catch (error) {
+        console.error('❌ Game access verification failed:', error);
+        throw error;
     }
 }
 

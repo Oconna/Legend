@@ -86,53 +86,61 @@ module.exports = (io) => {
         });
 
         // Start game (only host can do this)
-socket.on('start-game', async (data) => {
+socket.on('join-game', async (data) => {
+    const { gameId, playerName } = data;
+    
     try {
-        const { gameId, playerName } = data;
+        console.log(`🔌 Player ${playerName} attempting to join room for game ${gameId}`);
         
-        console.log(`Starting game ${gameId} by ${playerName}`);
-        
-        // Verify player is host
-        const players = await db.players.findByGame(gameId);
-        const player = players.find(p => p.player_name === playerName);
-        
-        if (!player || !player.is_host) {
-            socket.emit('error', { message: 'Only the host can start the game' });
-            return;
-        }
-
-        // Check if all players are ready
-        const allReady = players.every(p => p.is_ready);
-        if (!allReady || players.length < 2) {
-            socket.emit('error', { message: 'Not all players are ready or insufficient players' });
-            return;
-        }
-
-        console.log(`All ${players.length} players are ready, starting game...`);
-
-        // Update game status BEFORE sending redirect
-        await db.games.updateStatus(gameId, 'race_selection');
-        
-        // Wait a moment to ensure database update is complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        console.log('Game status updated to race_selection');
-        
-        // Send initial race selection state to all players
+        // Get current game state
         const gameState = await getGameState(gameId);
-        io.to(`game-${gameId}`).emit('game-state-update', gameState);
-        
-        // Then notify all players to move to race selection
-        io.to(`game-${gameId}`).emit('game-started', { 
-            redirectUrl: `/race-selection/${gameId}`,
-            gameStatus: 'race_selection'
-        });
+        if (!gameState || !gameState.game) {
+            console.log(`❌ Game ${gameId} not found`);
+            socket.emit('error', { message: 'Game not found' });
+            return;
+        }
 
-        console.log(`Game ${gameId} successfully started, players redirected to race selection`);
+        // Check if player exists in game
+        const existingPlayer = gameState.players.find(p => p.player_name === playerName);
+        
+        if (!existingPlayer) {
+            console.log(`❌ Player ${playerName} not found in game ${gameId} player list`);
+            console.log(`Available players:`, gameState.players.map(p => p.player_name));
+            socket.emit('error', { message: 'You are not a member of this game' });
+            return;
+        }
+
+        console.log(`✅ Player ${playerName} verified in game ${gameId} (${gameState.game.status})`);
+
+        // Join socket room
+        socket.join(`game-${gameId}`);
+        socket.gameId = gameId;
+        socket.playerName = playerName;
+
+        // Track active connection
+        if (!activeConnections.has(gameId)) {
+            activeConnections.set(gameId, new Set());
+        }
+        activeConnections.get(gameId).add(socket.id);
+
+        console.log(`✅ Player ${playerName} successfully joined room for game ${gameId}`);
+
+        // Send current game state
+        const updatedGameState = await getGameState(gameId);
+        io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
+
+        // Handle race selection specific data
+        if (gameState.game.status === 'race_selection') {
+            const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
+            socket.emit('race-confirmation-update', {
+                confirmedCount,
+                totalPlayers: gameState.players.length
+            });
+        }
 
     } catch (error) {
-        console.error('Error starting game:', error);
-        socket.emit('error', { message: 'Failed to start game: ' + error.message });
+        console.error('❌ Error in join-game:', error);
+        socket.emit('error', { message: 'Failed to join game room: ' + error.message });
     }
 });
 

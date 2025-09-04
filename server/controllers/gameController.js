@@ -242,19 +242,33 @@ router.get('/:gameId/races/:raceId/units', async (req, res) => {
 // GET /api/games/:gameId/chat - Get chat messages
 router.get('/:gameId/chat', async (req, res) => {
     try {
-        const gameId = parseInt(req.params.gameId);
-        const limit = parseInt(req.query.limit) || 50;
+        const gameId = req.params.gameId;
+        const limit = req.query.limit || 50;
         
-        // ✅ VALIDATION: Prüfe ob gameId valide ist
-        if (!gameId || isNaN(gameId)) {
+        console.log(`📝 Fetching chat messages for game: ${gameId} limit: ${limit}`);
+        
+        // ✅ Validate gameId
+        const gameIdNum = parseInt(gameId);
+        if (!gameIdNum || isNaN(gameIdNum) || gameIdNum <= 0) {
+            console.error('❌ Invalid game ID for chat:', gameId);
             return res.status(400).json({ error: 'Invalid game ID' });
         }
         
-        console.log('Fetching chat messages for game:', gameId, 'limit:', limit);
-        const messages = await db.chat.getMessages(gameId, limit);
+        // ✅ Check if game exists first
+        const game = await db.games.findById(gameIdNum);
+        if (!game) {
+            console.log(`❌ Game ${gameIdNum} not found for chat messages`);
+            return res.status(404).json({ error: 'Game not found' });
+        }
+        
+        // ✅ Get messages with proper error handling
+        const messages = await db.chat.getMessages(gameIdNum, limit);
+        console.log(`✅ Retrieved ${messages.length} chat messages for game ${gameIdNum}`);
+        
         res.json(messages);
+        
     } catch (error) {
-        console.error('Error fetching chat messages:', error);
+        console.error('❌ Error fetching chat messages:', error);
         res.status(500).json({ error: 'Failed to fetch chat messages' });
     }
 });
