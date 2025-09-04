@@ -1,0 +1,481 @@
+/* Race Selection page specific styles */
+
+.game-info {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.game-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.selection-status {
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    display: inline-block;
+}
+
+/* Content layout */
+.race-selection-content {
+    display: grid;
+    grid-template-columns: 2fr 400px;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.races-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-section {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Selected Race Display */
+.selected-race-display {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    border-radius: 12px;
+    color: white;
+}
+
+.selected-race-info {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.selected-race-image {
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.selected-race-details h3 {
+    color: white;
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+}
+
+.selected-race-details p {
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0 0 1rem 0;
+    line-height: 1.4;
+}
+
+.selected-race-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.race-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #FFD700;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.selection-actions .btn {
+    flex: 1;
+}
+
+/* Races Grid */
+.races-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.race-card {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.race-card:hover {
+    border-color: #4CAF50;
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+}
+
+.race-card.selected {
+    border-color: #4CAF50;
+    background: #f1f8e9;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+}
+
+.race-card.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: #4CAF50;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.race-image-container {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.race-image {
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 2px solid #ddd;
+}
+
+.race-card:hover .race-image,
+.race-card.selected .race-image {
+    border-color: #4CAF50;
+}
+
+.race-info h3 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+.race-info p {
+    color: #666;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin: 0 0 1rem 0;
+    text-align: center;
+}
+
+.race-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.race-stat {
+    text-align: center;
+    font-size: 0.8rem;
+}
+
+.race-stat .stat-label {
+    color: #999;
+    margin-bottom: 0.2rem;
+}
+
+.race-stat .stat-value {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+/* Waiting for confirmation */
+.waiting-confirmation {
+    text-align: center;
+    padding: 3rem 2rem;
+}
+
+.waiting-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    animation: pulse 2s infinite;
+}
+
+.waiting-confirmation h3 {
+    color: #4CAF50;
+    margin-bottom: 1rem;
+}
+
+.waiting-confirmation p {
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+.confirmed-players {
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+    transition: width 0.5s ease;
+    width: 0%;
+}
+
+.progress-text {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* Units Modal */
+.modal-content.large {
+    max-width: 900px;
+    max-height: 90vh;
+}
+
+.tier-tabs {
+    display: flex;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.tier-tab {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tier-tab:hover {
+    color: #4CAF50;
+    background: #f8f9fa;
+}
+
+.tier-tab.active {
+    color: #4CAF50;
+    border-bottom-color: #4CAF50;
+    background: #f1f8e9;
+}
+
+.units-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.unit-card {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: transform 0.2s ease;
+}
+
+.unit-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.unit-image-container {
+    text-align: center;
+    margin-bottom: 0.8rem;
+}
+
+.unit-image {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    object-fit: cover;
+}
+
+.unit-name {
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+    margin-bottom: 0.8rem;
+    font-size: 1rem;
+}
+
+.unit-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+}
+
+.unit-stat {
+    display: flex;
+    justify-content: space-between;
+    color: #666;
+}
+
+.unit-stat.highlight {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.unit-stat .stat-icon {
+    margin-right: 0.2rem;
+}
+
+/* Loading overlay for map generation */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.loading-content {
+    text-align: center;
+    color: white;
+    max-width: 400px;
+}
+
+.spinner.large {
+    width: 80px;
+    height: 80px;
+    border-width: 6px;
+    margin: 0 auto 2rem;
+}
+
+.loading-overlay h2 {
+    margin-bottom: 1rem;
+    font-size: 2rem;
+}
+
+.loading-progress {
+    margin-top: 2rem;
+}
+
+.loading-progress .progress-bar {
+    height: 12px;
+    margin-bottom: 1rem;
+}
+
+.loading-progress .progress-text {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1rem;
+}
+
+/* Chat specific styles for race selection */
+.chat-section .card {
+    height: 500px;
+    padding: 0;
+}
+
+.chat-container {
+    height: 100%;
+}
+
+/* Animation for pulse effect */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+    .race-selection-content {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .chat-section .card {
+        height: 400px;
+    }
+}
+
+@media (max-width: 768px) {
+    .races-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .selected-race-info {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .selected-race-stats {
+        justify-content: center;
+    }
+    
+    .selection-actions {
+        flex-direction: column;
+    }
+    
+    .tier-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .tier-tab {
+        flex: 1;
+        min-width: 120px;
+    }
+    
+    .units-grid {
+        grid-template-columns: 1fr;
+        max-height: 400px;
+    }
+}
+
+@media (max-width: 600px) {
+    .race-selection-content {
+        gap: 1rem;
+    }
+    
+    .selected-race-display {
+        padding: 1rem;
+    }
+    
+    .race-card {
+        padding: 1rem;
+    }
+    
+    .modal-content.large {
+        margin: 1rem;
+        max-width: calc(100% - 2rem);
+        max-height: calc(100% - 2rem);
+    }
+}

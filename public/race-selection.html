@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Game - Rassenauswahl</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/race-selection.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏰 Rassenauswahl</h1>
+            <div class="game-info">
+                <div id="game-name" class="game-title">Spiel wird geladen...</div>
+                <div id="selection-status" class="selection-status">
+                    <span id="confirmed-count">0</span> von <span id="total-players">0</span> Spielern bestätigt
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="race-selection-content">
+                <!-- Race Selection Section -->
+                <section class="races-section">
+                    <div class="card">
+                        <h2>🛡️ Wähle deine Rasse</h2>
+                        
+                        <!-- Selected Race Display -->
+                        <div id="selected-race-display" class="selected-race-display hidden">
+                            <div class="selected-race-info">
+                                <img id="selected-race-image" src="" alt="" class="selected-race-image">
+                                <div class="selected-race-details">
+                                    <h3 id="selected-race-name">Keine Rasse ausgewählt</h3>
+                                    <p id="selected-race-description"></p>
+                                    <div class="selected-race-stats">
+                                        <div class="race-stat">
+                                            <span class="stat-label">Stufe 2 Kosten:</span>
+                                            <span id="selected-race-tier2" class="stat-value">-</span>
+                                        </div>
+                                        <div class="race-stat">
+                                            <span class="stat-label">Stufe 3 Kosten:</span>
+                                            <span id="selected-race-tier3" class="stat-value">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="selection-actions">
+                                <button id="show-units-btn" class="btn btn-secondary">
+                                    📋 Einheiten anzeigen
+                                </button>
+                                <button id="confirm-race-btn" class="btn btn-primary">
+                                    ✅ Auswahl bestätigen
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Race Grid -->
+                        <div id="races-grid" class="races-grid">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                Lade Rassen...
+                            </div>
+                        </div>
+
+                        <!-- Waiting for confirmation -->
+                        <div id="waiting-confirmation" class="waiting-confirmation hidden">
+                            <div class="waiting-content">
+                                <div class="waiting-icon">⏳</div>
+                                <h3>Auswahl bestätigt!</h3>
+                                <p>Warte auf andere Spieler...</p>
+                                <div class="confirmed-players">
+                                    <div class="progress-bar">
+                                        <div id="confirmation-progress" class="progress-fill"></div>
+                                    </div>
+                                    <div id="confirmation-text" class="progress-text">0 von 0 bestätigt</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Chat Section -->
+                <section class="chat-section">
+                    <div class="card">
+                        <div class="chat-container">
+                            <div class="chat-header">
+                                💬 Team-Chat
+                            </div>
+                            <div id="chat-messages" class="chat-messages">
+                                <!-- Chat messages will be loaded here -->
+                            </div>
+                            <div class="chat-input">
+                                <input type="text" id="chat-input" placeholder="Nachricht eingeben..." maxlength="500">
+                                <button id="send-chat" class="btn btn-primary">
+                                    📤 Senden
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>
+                <button id="back-to-lobby" class="btn btn-secondary">← Zurück zur Lobby</button>
+            </p>
+        </footer>
+    </div>
+
+    <!-- Units Modal -->
+    <div id="units-modal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h2 id="units-modal-title">Einheiten von [Rasse]</h2>
+                <button class="close" onclick="Utils.hideModal('units-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="tier-tabs">
+                    <button class="tier-tab active" data-tier="1">Stufe 1</button>
+                    <button class="tier-tab" data-tier="2">Stufe 2 (+20%)</button>
+                    <button class="tier-tab" data-tier="3">Stufe 3 (+40%)</button>
+                </div>
+                <div id="units-grid" class="units-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Lade Einheiten...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map Generation Loading -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-content">
+            <div class="spinner large"></div>
+            <div id="loading-text">Generiere Karte...</div>
+            <div class="loading-progress">
+                <div class="progress-bar">
+                    <div id="map-progress" class="progress-fill"></div>
+                </div>
+                <div id="progress-text">Vorbereitung...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error/Success Messages -->
+    <div id="message-container" class="message-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/race-selection.js"></script>
+</body>
+</html>
