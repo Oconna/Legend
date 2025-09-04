@@ -57,3 +57,119 @@ Sehr wichtig:
 - Versuche den Code in den einzelnen Dateien kurz zu halten, teile den Code an sinnvollen Stellen in mehrere Dateien auf (nach Thema)
 - css immer in separaten Dateien
 
+
+
+
+strategy-game-server/
+├── package.json                 # Bereits vorhanden
+├── Procfile                     # Bereits vorhanden  
+├── .env                        # Bereits vorhanden
+├── .gitignore                  # Zu erstellen
+├── README.md                   # Optional
+│
+├── server/                     # Backend-Code
+│   ├── app.js                 # Hauptserver (bereits erstellt)
+│   ├── database.js            # Datenbankverbindung (bereits erstellt)
+│   │
+│   ├── controllers/           # Controller für verschiedene Bereiche
+│   │   ├── gameController.js  # Game API Routes (bereits erstellt)
+│   │   └── socketController.js # Socket.io Events (bereits erstellt)
+│   │
+│   ├── models/               # Datenbankmodelle (optional, für bessere Organisation)
+│   │   ├── Game.js
+│   │   ├── Player.js
+│   │   ├── Race.js
+│   │   └── Unit.js
+│   │
+│   ├── utils/                # Server-Utilities
+│   │   ├── mapGenerator.js   # Kartengenerierung (bereits erstellt)
+│   │   ├── gameLogic.js      # Spiellogik (Bewegung, Kampf)
+│   │   └── pathfinding.js    # Pfadfindung für Einheitenbewegung
+│   │
+│   └── middleware/           # Custom Middleware
+│       ├── auth.js          # Authentifizierung (falls nötig)
+│       └── validation.js     # Request Validation
+│
+├── public/                   # Frontend-Code (statische Dateien)
+│   ├── index.html           # Startseite (bereits erstellt)
+│   ├── lobby.html           # Lobby-Seite (bereits erstellt)
+│   ├── race-selection.html  # Rassenauswahl (zu erstellen)
+│   └── game.html            # Haupt-Spielseite (zu erstellen)
+│   │
+│   ├── css/                 # Stylesheets
+│   │   ├── main.css         # Hauptstyles (bereits erstellt)
+│   │   ├── index.css        # Index-spezifisch (bereits erstellt)
+│   │   ├── lobby.css        # Lobby-spezifisch (bereits erstellt)
+│   │   ├── race-selection.css # Rassenauswahl-spezifisch
+│   │   └── game.css         # Spiel-spezifisch
+│   │
+│   ├── js/                  # JavaScript-Dateien
+│   │   ├── utils.js         # Allgemeine Utilities (bereits erstellt)
+│   │   ├── index.js         # Index-Logik (bereits erstellt)
+│   │   ├── lobby.js         # Lobby-Logik (bereits erstellt)
+│   │   ├── race-selection.js # Rassenauswahl-Logik
+│   │   ├── game.js          # Haupt-Spiellogik
+│   │   ├── gameMap.js       # Karten-Rendering und Interaction
+│   │   ├── gameUnits.js     # Einheiten-Management
+│   │   └── gameChat.js      # Chat-System (wiederverwendbar)
+│   │
+│   ├── images/              # Spielgrafiken
+│   │   ├── races/           # Rassengrafiken
+│   │   │   ├── humans.png
+│   │   │   ├── elves.png
+│   │   │   ├── dwarves.png
+│   │   │   ├── orcs.png
+│   │   │   └── undead.png
+│   │   │
+│   │   ├── units/           # Einheitengrafiken
+│   │   │   ├── human/
+│   │   │   │   ├── human_warrior.png
+│   │   │   │   ├── human_archer.png
+│   │   │   │   └── ...
+│   │   │   ├── elves/
+│   │   │   ├── dwarves/
+│   │   │   ├── orcs/
+│   │   │   └── undead/
+│   │   │
+│   │   ├── terrain/         # Terrain-Grafiken
+│   │   │   ├── grass.png
+│   │   │   ├── mountain.png
+│   │   │   ├── swamp.png
+│   │   │   ├── water.png
+│   │   │   ├── forest.png
+│   │   │   ├── desert.png
+│   │   │   └── snow.png
+│   │   │
+│   │   ├── buildings/       # Gebäude-Grafiken
+│   │   │   ├── village.png
+│   │   │   └── castle.png
+│   │   │
+│   │   └── ui/              # UI-Icons und Grafiken
+│   │       ├── heart.png    # Lebenspunkte-Icon
+│   │       ├── gold.png     # Gold-Icon
+│   │       ├── move.png     # Bewegung-Icon
+│   │       └── attack.png   # Angriff-Icon
+│   │
+│   └── sounds/              # Sound-Dateien (optional)
+│       ├── click.mp3
+│       ├── move.mp3
+│       ├── attack.mp3
+│       └── background.mp3
+│
+├── database/                # Datenbank-Scripts
+│   ├── schema.sql          # Vollständiges DB-Schema (bereits erstellt)
+│   ├── seed_data.sql       # Beispieldaten für Rassen/Einheiten
+│   └── migrations/         # DB-Änderungen für Updates
+│       └── 001_initial.sql
+│
+├── docs/                   # Dokumentation
+│   ├── api.md             # API-Dokumentation
+│   ├── game_rules.md      # Spielregeln
+│   └── deployment.md      # Deployment-Anleitung
+│
+└── tests/                  # Tests (optional)
+    ├── server/
+    │   ├── gameController.test.js
+    │   └── socketController.test.js
+    └── public/
+        └── utils.test.js
