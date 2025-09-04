@@ -100,8 +100,26 @@ const db = {
         },
 
         deleteGame: async (gameId) => {
-            const sql = 'DELETE FROM games WHERE id = ?';
-            return db.query(sql, [gameId]);
+            const connection = await db.getConnection();
+            try {
+                await connection.beginTransaction();
+                
+                // Delete in correct order to avoid foreign key constraints
+                await connection.execute('DELETE FROM chat_messages WHERE game_id = ?', [gameId]);
+                await connection.execute('DELETE FROM game_units WHERE game_id = ?', [gameId]);
+                await connection.execute('DELETE FROM game_maps WHERE game_id = ?', [gameId]);
+                await connection.execute('DELETE FROM game_players WHERE game_id = ?', [gameId]);
+                await connection.execute('DELETE FROM games WHERE id = ?', [gameId]);
+                
+                await connection.commit();
+                return { success: true };
+                
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
+            }
         },
 
         getPlayerCount: async (gameId) => {
@@ -118,6 +136,42 @@ const db = {
             `;
             const result = await db.query(sql);
             return result.affectedRows;
+        },
+
+        // ✅ NEUE FUNKTION: Spiel-Konsistenz prüfen und reparieren
+        validateAndRepair: async (gameId) => {
+            const repairs = [];
+            
+            try {
+                // 1. Host-Status prüfen
+                const hostRepair = await db.hosts.validateAndRepairHost(gameId);
+                if (hostRepair.repaired) {
+                    repairs.push('host-status');
+                }
+                
+                // 2. Spieler-Reihenfolge prüfen
+                const players = await db.players.findByGame(gameId);
+                if (players.length > 0) {
+                    const orders = players.map(p => p.player_order).sort((a, b) => a - b);
+                    const expectedOrders = Array.from({length: players.length}, (_, i) => i + 1);
+                    
+                    if (JSON.stringify(orders) !== JSON.stringify(expectedOrders)) {
+                        // Player order reparieren
+                        for (let i = 0; i < players.length; i++) {
+                            await db.query(
+                                'UPDATE game_players SET player_order = ? WHERE id = ?',
+                                [i + 1, players[i].id]
+                            );
+                        }
+                        repairs.push('player-order');
+                    }
+                }
+                
+                return { success: true, repairs };
+                
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
         }
     },
 
@@ -174,6 +228,196 @@ const db = {
         updateTier: async (gameId, playerName, tier) => {
             const sql = 'UPDATE game_players SET tier_level = ? WHERE game_id = ? AND player_name = ?';
             return db.query(sql, [tier, gameId, playerName]);
+        },
+
+        // ✅ NEUE FUNKTION: Sichere Spieler-Entfernung mit Host-Übertragung
+        removeWithHostTransfer: async (gameId, playerName) => {
+            const connection = await db.getConnection();
+            
+            try {
+                await connection.beginTransaction();
+                
+                // 1. Spieler-Info vor Entfernung holen
+                const [playerInfo] = await connection.execute(
+                    'SELECT id, is_host, player_order FROM game_players WHERE game_id = ? AND player_name = ?',
+                    [gameId, playerName]
+                );
+                
+                if (playerInfo.length === 0) {
+                    await connection.rollback();
+                    return { success: false, error: 'Player not found' };
+                }
+                
+                const wasHost = playerInfo[0].is_host;
+                
+                // 2. Spieler entfernen
+                await connection.execute(
+                    'DELETE FROM game_players WHERE game_id = ? AND player_name = ?',
+                    [gameId, playerName]
+                );
+                
+                // 3. Verbleibende Spieler prüfen
+                const [remainingPlayers] = await connection.execute(
+                    'SELECT id, player_name, player_order FROM game_players WHERE game_id = ? ORDER BY player_order ASC',
+                    [gameId]
+                );
+                
+                let hostTransfer = null;
+                
+                if (remainingPlayers.length > 0 && wasHost) {
+                    // Host übertragen zum ersten verbleibenden Spieler
+                    const newHost = remainingPlayers[0];
+                    
+                    await connection.execute(
+                        'UPDATE game_players SET is_host = TRUE WHERE game_id = ? AND id = ?',
+                        [gameId, newHost.id]
+                    );
+                    
+                    await connection.execute(
+                        'UPDATE games SET host_player = ? WHERE id = ?',
+                        [newHost.player_name, gameId]
+                    );
+                    
+                    hostTransfer = {
+                        newHostId: newHost.id,
+                        newHostName: newHost.player_name
+                    };
+                }
+                
+                await connection.commit();
+                
+                return {
+                    success: true,
+                    wasHost,
+                    remainingPlayerCount: remainingPlayers.length,
+                    hostTransfer
+                };
+                
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
+            }
+        }
+    },
+
+    // ✅ NEUE HOST-SPEZIFISCHE FUNKTIONEN
+    hosts: {
+        // Sicherstellen, dass nur ein Host pro Spiel existiert
+        ensureSingleHost: async (gameId) => {
+            const hostCount = await db.query(
+                'SELECT COUNT(*) as count FROM game_players WHERE game_id = ? AND is_host = TRUE',
+                [gameId]
+            );
+            
+            if (hostCount[0].count > 1) {
+                // Repariere multiple Hosts - behalte nur den ersten
+                await db.query(`
+                    UPDATE game_players 
+                    SET is_host = FALSE 
+                    WHERE game_id = ? AND is_host = TRUE AND id NOT IN (
+                        SELECT * FROM (
+                            SELECT id FROM game_players 
+                            WHERE game_id = ? AND is_host = TRUE 
+                            ORDER BY player_order ASC 
+                            LIMIT 1
+                        ) as temp
+                    )
+                `, [gameId, gameId]);
+            }
+            
+            return hostCount[0].count;
+        },
+
+        // Host-Status übertragen
+        transferHost: async (gameId, newHostPlayerId) => {
+            const connection = await db.getConnection();
+            
+            try {
+                await connection.beginTransaction();
+                
+                // 1. Alle Hosts in diesem Spiel entfernen
+                await connection.execute(
+                    'UPDATE game_players SET is_host = FALSE WHERE game_id = ?',
+                    [gameId]
+                );
+                
+                // 2. Neuen Host setzen
+                const [result] = await connection.execute(
+                    'UPDATE game_players SET is_host = TRUE WHERE game_id = ? AND id = ?',
+                    [gameId, newHostPlayerId]
+                );
+                
+                if (result.affectedRows === 0) {
+                    throw new Error('Player not found for host transfer');
+                }
+                
+                // 3. Spielername des neuen Hosts holen
+                const [hostInfo] = await connection.execute(
+                    'SELECT player_name FROM game_players WHERE game_id = ? AND id = ?',
+                    [gameId, newHostPlayerId]
+                );
+                
+                if (hostInfo.length === 0) {
+                    throw new Error('Host player info not found');
+                }
+                
+                // 4. Games-Tabelle aktualisieren
+                await connection.execute(
+                    'UPDATE games SET host_player = ? WHERE id = ?',
+                    [hostInfo[0].player_name, gameId]
+                );
+                
+                // 5. Validierung
+                const [validation] = await connection.execute(`
+                    SELECT 
+                        gp.player_name,
+                        g.host_player,
+                        (gp.player_name = g.host_player) as is_consistent
+                    FROM game_players gp
+                    JOIN games g ON g.id = gp.game_id
+                    WHERE gp.game_id = ? AND gp.is_host = TRUE
+                `, [gameId]);
+                
+                if (validation.length !== 1 || !validation[0].is_consistent) {
+                    throw new Error('Host transfer validation failed');
+                }
+                
+                await connection.commit();
+                
+                return {
+                    success: true,
+                    newHostName: hostInfo[0].player_name,
+                    newHostId: newHostPlayerId
+                };
+                
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
+            }
+        },
+
+        // Host validieren und ggf. reparieren
+        validateAndRepairHost: async (gameId) => {
+            const players = await db.players.findByGame(gameId);
+            const hosts = players.filter(p => p.is_host);
+            
+            if (hosts.length === 0 && players.length > 0) {
+                // Kein Host vorhanden - ersten Spieler zum Host machen
+                const newHost = players.sort((a, b) => a.player_order - b.player_order)[0];
+                await db.hosts.transferHost(gameId, newHost.id);
+                return { repaired: true, newHost: newHost.player_name };
+                
+            } else if (hosts.length > 1) {
+                // Mehrere Hosts - nur ersten behalten
+                await db.hosts.ensureSingleHost(gameId);
+                return { repaired: true, fixedMultipleHosts: true };
+            }
+            
+            return { repaired: false };
         }
     },
 
@@ -194,6 +438,26 @@ const db = {
         findByRace: async (raceId) => {
             const sql = 'SELECT * FROM units WHERE race_id = ? ORDER BY cost';
             return db.query(sql, [raceId]);
+        },
+
+        // ✅ NEUE FUNKTION: Einheit auf dem Spielfeld platzieren
+        placeOnMap: async (gameId, playerId, unitId, x, y, health, movement) => {
+            const sql = `
+                INSERT INTO game_units (game_id, player_id, unit_id, x_pos, y_pos, current_health, movement_left)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `;
+            return db.query(sql, [gameId, playerId, unitId, x, y, health, movement]);
+        },
+
+        // ✅ NEUE FUNKTION: Einheiten eines Spiels laden
+        findByGame: async (gameId) => {
+            const sql = `
+                SELECT gu.*, u.name, u.image_filename, u.attack_power, u.movement_points, u.range, u.can_fly
+                FROM game_units gu
+                JOIN units u ON gu.unit_id = u.id
+                WHERE gu.game_id = ?
+            `;
+            return db.query(sql, [gameId]);
         }
     },
 
@@ -207,6 +471,41 @@ const db = {
     buildings: {
         findAll: async () => {
             return db.query('SELECT * FROM building_types');
+        }
+    },
+
+    // ✅ NEUE MAP-FUNKTIONEN
+    maps: {
+        // Karte für ein Spiel laden
+        findByGame: async (gameId) => {
+            const sql = `
+                SELECT 
+                    gm.*,
+                    tt.name as terrain_name,
+                    tt.image_filename as terrain_image,
+                    tt.movement_cost,
+                    bt.name as building_name,
+                    bt.image_filename as building_image
+                FROM game_maps gm
+                LEFT JOIN terrain_types tt ON gm.terrain_type_id = tt.id
+                LEFT JOIN building_types bt ON gm.building_type_id = bt.id
+                WHERE gm.game_id = ?
+                ORDER BY gm.y_pos, gm.x_pos
+            `;
+            return db.query(sql, [gameId]);
+        },
+
+        // Einzelnes Tile laden
+        getTile: async (gameId, x, y) => {
+            const sql = `
+                SELECT gm.*, tt.movement_cost, bt.income
+                FROM game_maps gm
+                LEFT JOIN terrain_types tt ON gm.terrain_type_id = tt.id
+                LEFT JOIN building_types bt ON gm.building_type_id = bt.id
+                WHERE gm.game_id = ? AND gm.x_pos = ? AND gm.y_pos = ?
+            `;
+            const results = await db.query(sql, [gameId, x, y]);
+            return results[0];
         }
     },
 

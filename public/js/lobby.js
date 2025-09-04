@@ -42,6 +42,11 @@ class GameLobby {
             this.handlePlayerLeft(data);
         });
 
+        // ✅ VERBESSERTE HOST-ÜBERTRAGUNG EVENTS
+        this.socket.on('new-host-assigned', (data) => {
+            this.handleNewHostAssigned(data);
+        });
+
         this.socket.on('chat-message', (message) => {
             this.addChatMessage(message);
         });
@@ -147,14 +152,14 @@ class GameLobby {
         this.updateGameInfo();
         this.updatePlayersList(gameState.players);
         
-        // Update current player status
+        // ✅ VERBESSERTE HOST-STATUS AKTUALISIERUNG
         const currentPlayer = gameState.players.find(p => p.player_name === this.playerName);
         if (currentPlayer) {
             this.isReady = currentPlayer.is_ready;
+            this.isHost = currentPlayer.is_host || false; // Wichtig: Host-Status aktualisieren
             this.updateReadyButton();
+            this.updateHostControls();
         }
-        
-        this.updateHostControls();
     }
 
     handleAllPlayersReady() {
@@ -179,43 +184,46 @@ class GameLobby {
     }
 
     handlePlayerLeft(data) {
+        // ✅ VERBESSERTE BEHANDLUNG VON SPIELER-VERLASSEN
         if (data.wasHost && data.newHost) {
-            Utils.showInfo(`${data.playerName} hat das Spiel verlassen. ${data.newHost} ist jetzt der Host.`);
+            const wasTransferredToMe = data.newHost === this.playerName;
             
-            // Update host status if current player is new host
-            if (data.newHost === this.playerName) {
+            if (wasTransferredToMe) {
+                Utils.showSuccess(`${data.playerName} hat das Spiel verlassen. Du bist jetzt der Host!`);
                 this.isHost = true;
-                Utils.showSuccess('Du bist jetzt der Host des Spiels!');
+            } else {
+                Utils.showInfo(`${data.playerName} hat das Spiel verlassen. ${data.newHost} ist jetzt der Host.`);
             }
         } else {
-            Utils.showInfo(`${data.playerName} hat das Spiel verlassen`);
+            const message = data.disconnected 
+                ? `${data.playerName} ist disconnected` 
+                : `${data.playerName} hat das Spiel verlassen`;
+            Utils.showInfo(message);
         }
         
-        this.updateGameInfo();
-        this.updatePlayersList(data.gameState.players);
+        // Update UI with new game state
+        if (data.gameState) {
+            this.gameData = data.gameState;
+            this.updateGameInfo();
+            this.updatePlayersList(data.gameState.players);
+        }
+        
         this.updateHostControls();
     }
 
-    handleGameDeleted(data) {
-        Utils.showError('Das Spiel wurde gelöscht, da keine Spieler mehr vorhanden sind.');
-        this.showLoadingOverlay('Spiel gelöscht...', 'Weiterleitung zur Startseite...');
-        
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 3000);
-    }
-
+    // ✅ NEUE METHODE FÜR HOST-ÜBERTRAGUNG
     handleNewHostAssigned(data) {
-        Utils.showInfo(data.message);
+        console.log('New host assigned:', data);
         
         if (data.newHostName === this.playerName) {
             this.isHost = true;
             Utils.showSuccess('Du bist jetzt der Host des Spiels!');
             this.updateHostControls();
-            this.updateReadyButton();
+        } else {
+            Utils.showInfo(data.message);
         }
         
-        // Refresh the game data to get the updated host information
+        // Refresh game data to ensure consistency
         this.loadGameData();
     }
 
@@ -300,13 +308,14 @@ class GameLobby {
         }
     }
 
+    // ✅ VERBESSERTE HOST-KONTROLLEN
     updateHostControls() {
         const hostControls = document.getElementById('host-controls');
         const startBtn = document.getElementById('start-game');
         
         if (!hostControls || !startBtn) return;
 
-        console.log('Updating host controls. IsHost:', this.isHost);
+        console.log('Updating host controls. IsHost:', this.isHost, 'GameData:', this.gameData);
 
         if (this.isHost) {
             hostControls.classList.remove('hidden');
@@ -316,6 +325,7 @@ class GameLobby {
             const minPlayers = (this.gameData?.players.length || 0) >= 2;
             
             startBtn.disabled = !allReady || !minPlayers;
+            startBtn.classList.remove('waiting-pulse'); // Reset pulse
             
             if (!minPlayers) {
                 startBtn.textContent = '🚀 Warte auf mehr Spieler';
@@ -437,6 +447,18 @@ class GameLobby {
         if (overlay) {
             overlay.classList.add('hidden');
         }
+    }
+
+    // ✅ DEBUG-METHODE FÜR ENTWICKLUNG
+    debugStatus() {
+        console.log('=== LOBBY DEBUG STATUS ===');
+        console.log('Game ID:', this.gameId);
+        console.log('Player Name:', this.playerName);
+        console.log('Is Host:', this.isHost);
+        console.log('Is Ready:', this.isReady);
+        console.log('Game Data:', this.gameData);
+        console.log('Socket Connected:', this.socket.connected);
+        console.log('========================');
     }
 }
 
