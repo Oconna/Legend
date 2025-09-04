@@ -104,15 +104,18 @@ class RaceSelection {
 
     async loadGameData() {
         try {
+            console.log(`Loading game data for game ${this.gameId}...`);
             const data = await Utils.get(`/api/games/${this.gameId}`);
             
             if (!data || !data.game) {
                 throw new Error('Spiel nicht gefunden');
             }
 
-            // Check if game is in race selection phase
-            if (data.game.status !== 'race_selection') {
-                Utils.showError('Das Spiel befindet sich nicht in der Rassenauswahl-Phase');
+            console.log('Game data loaded:', data.game.status, 'Players:', data.players.length);
+
+            // ✅ FLEXIBLERE STATUS-PRÜFUNG
+            if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
+                Utils.showError(`Das Spiel befindet sich in Phase: ${data.game.status}`);
                 setTimeout(() => window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`, 2000);
                 return;
             }
@@ -133,11 +136,17 @@ class RaceSelection {
                 this.hasConfirmed = true;
                 this.selectedRace = currentPlayer.race_id;
                 this.showWaitingForConfirmation();
+                console.log('Player already confirmed race:', currentPlayer.race_id);
             }
             
         } catch (error) {
-            Utils.showError('Fehler beim Laden der Spieldaten');
             console.error('Error loading game data:', error);
+            Utils.showError('Fehler beim Laden der Spieldaten: ' + error.message);
+            
+            // Fallback nach 5 Sekunden
+            setTimeout(() => {
+                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            }, 5000);
         }
     }
 

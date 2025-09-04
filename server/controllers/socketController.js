@@ -19,7 +19,7 @@ module.exports = (io) => {
                     return;
                 }
 
-                // Prüfen ob Spieler bereits im Spiel ist
+                // Prüfen ob Spieler bereits im Spiel ist (wichtig für Seitenwechsel)
                 const existingPlayer = gameState.players.find(p => p.player_name === playerName);
                 
                 if (!existingPlayer) {
@@ -28,6 +28,9 @@ module.exports = (io) => {
                     socket.emit('error', { message: 'You are not a member of this game' });
                     return;
                 }
+
+                // ✅ WICHTIG: Bei allen Spiel-Phasen beitreten erlauben
+                console.log(`Player ${playerName} joining game ${gameId} in phase: ${gameState.game.status}`);
 
                 // Socket zu Spiel-Room hinzufügen
                 socket.join(`game-${gameId}`);
@@ -40,11 +43,21 @@ module.exports = (io) => {
                 }
                 activeConnections.get(gameId).add(socket.id);
 
-                console.log(`Player ${playerName} joined room for game ${gameId}`);
+                console.log(`Player ${playerName} joined room for game ${gameId} (${gameState.game.status})`);
 
                 // Aktuellen Game State an alle Spieler senden
                 const updatedGameState = await getGameState(gameId);
                 io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
+
+                // ✅ SPEZIELLE BEHANDLUNG FÜR RACE SELECTION PHASE
+                if (gameState.game.status === 'race_selection') {
+                    // Bestätigungsstand senden
+                    const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
+                    socket.emit('race-confirmation-update', {
+                        confirmedCount,
+                        totalPlayers: gameState.players.length
+                    });
+                }
 
             } catch (error) {
                 console.error('Error in join-game:', error);
