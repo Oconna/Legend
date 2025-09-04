@@ -5,10 +5,104 @@ module.exports = (io) => {
     const activeConnections = new Map(); // gameId -> Set of socket.ids
     
     io.on('connection', (socket) => {
-        console.log('User connected:', socket.id);
+        console.log('🔌 User connected:', socket.id);
+
+        // ✅ DEBUG: Log all incoming events
+        socket.onAny((eventName, ...args) => {
+            console.log(`📡 RECEIVED EVENT: ${eventName} from ${socket.id}`, args);
+        });
+		
+		 socket.on('start-game', async (data, acknowledgment) => {
+            console.log('🎮 START-GAME EVENT RECEIVED');
+            console.log('🎮 Data received:', data);
+            console.log('🎮 Socket ID:', socket.id);
+            console.log('🎮 Has acknowledgment callback:', typeof acknowledgment === 'function');
+            
+            try {
+                const { gameId, playerName } = data;
+                
+                console.log(`🎮 Processing start-game: gameId=${gameId}, playerName=${playerName}`);
+                
+                // Verify data
+                if (!gameId || !playerName) {
+                    const error = 'Missing gameId or playerName';
+                    console.log('❌ START-GAME ERROR:', error);
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+                
+                // Verify player is host
+                console.log('🔍 Fetching players for game', gameId);
+                const players = await db.players.findByGame(gameId);
+                console.log('🔍 Players found:', players.map(p => ({ name: p.player_name, isHost: p.is_host })));
+                
+                const player = players.find(p => p.player_name === playerName);
+                console.log('🔍 Current player:', player);
+                
+                if (!player || !player.is_host) {
+                    const error = 'Only the host can start the game';
+                    console.log('❌ START-GAME ERROR:', error);
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+
+                // Check if all players are ready
+                const allReady = players.every(p => p.is_ready);
+                const playerCount = players.length;
+                console.log('🔍 All ready:', allReady, 'Player count:', playerCount);
+                
+                if (!allReady || playerCount < 2) {
+                    const error = 'Not all players are ready or insufficient players';
+                    console.log('❌ START-GAME ERROR:', error);
+                    socket.emit('error', { message: error });
+                    if (acknowledgment) acknowledgment({ success: false, error });
+                    return;
+                }
+
+                console.log(`✅ All ${playerCount} players are ready, starting game...`);
+
+                // Update game status
+                console.log('📝 Updating game status to race_selection...');
+                await db.games.updateStatus(gameId, 'race_selection');
+                
+                // Verify status was updated
+                const updatedGame = await db.games.findById(gameId);
+                console.log('📝 Game status after update:', updatedGame?.status);
+
+                // Get updated game state
+                const gameState = await getGameState(gameId);
+                console.log('📝 Sending game state update to all players...');
+                io.to(`game-${gameId}`).emit('game-state-update', gameState);
+                
+                // Send success acknowledgment
+                if (acknowledgment) {
+                    console.log('✅ Sending success acknowledgment to host');
+                    acknowledgment({ success: true, status: 'race_selection' });
+                }
+                
+                // Notify all players to redirect
+                const redirectData = { 
+                    redirectUrl: `/race-selection/${gameId}`,
+                    gameStatus: 'race_selection'
+                };
+                console.log('🚀 Sending game-started event to all players:', redirectData);
+                io.to(`game-${gameId}`).emit('game-started', redirectData);
+
+                console.log(`🎉 Game ${gameId} successfully started!`);
+
+            } catch (error) {
+                console.error('❌ CRITICAL ERROR in start-game:', error);
+                const errorMessage = 'Failed to start game: ' + error.message;
+                socket.emit('error', { message: errorMessage });
+                if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
+            }
+        });
 
         // ✅ VERBESSERTE JOIN-GAME BEHANDLUNG
         socket.on('join-game', async (data) => {
+			console.log('🏠 JOIN-GAME EVENT RECEIVED:', data);fasync function getGameState(gameId)
             const { gameId, playerName } = data;
             
             try {
@@ -84,65 +178,6 @@ module.exports = (io) => {
                 socket.emit('error', { message: 'Failed to update ready status' });
             }
         });
-
-        // Start game (only host can do this)
-socket.on('join-game', async (data) => {
-    const { gameId, playerName } = data;
-    
-    try {
-        console.log(`🔌 Player ${playerName} attempting to join room for game ${gameId}`);
-        
-        // Get current game state
-        const gameState = await getGameState(gameId);
-        if (!gameState || !gameState.game) {
-            console.log(`❌ Game ${gameId} not found`);
-            socket.emit('error', { message: 'Game not found' });
-            return;
-        }
-
-        // Check if player exists in game
-        const existingPlayer = gameState.players.find(p => p.player_name === playerName);
-        
-        if (!existingPlayer) {
-            console.log(`❌ Player ${playerName} not found in game ${gameId} player list`);
-            console.log(`Available players:`, gameState.players.map(p => p.player_name));
-            socket.emit('error', { message: 'You are not a member of this game' });
-            return;
-        }
-
-        console.log(`✅ Player ${playerName} verified in game ${gameId} (${gameState.game.status})`);
-
-        // Join socket room
-        socket.join(`game-${gameId}`);
-        socket.gameId = gameId;
-        socket.playerName = playerName;
-
-        // Track active connection
-        if (!activeConnections.has(gameId)) {
-            activeConnections.set(gameId, new Set());
-        }
-        activeConnections.get(gameId).add(socket.id);
-
-        console.log(`✅ Player ${playerName} successfully joined room for game ${gameId}`);
-
-        // Send current game state
-        const updatedGameState = await getGameState(gameId);
-        io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
-
-        // Handle race selection specific data
-        if (gameState.game.status === 'race_selection') {
-            const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
-            socket.emit('race-confirmation-update', {
-                confirmedCount,
-                totalPlayers: gameState.players.length
-            });
-        }
-
-    } catch (error) {
-        console.error('❌ Error in join-game:', error);
-        socket.emit('error', { message: 'Failed to join game room: ' + error.message });
-    }
-});
 
         // Race selection
         socket.on('select-race', async (data) => {
@@ -380,13 +415,18 @@ socket.on('join-game', async (data) => {
 
     // Bestehende Helper-Funktionen
     async function getGameState(gameId) {
+        console.log('🔍 Getting game state for:', gameId);
         const game = await db.games.findById(gameId);
         const players = await db.players.findByGame(gameId);
         
-        return {
-            game,
-            players
-        };
+        const state = { game, players };
+        console.log('🔍 Game state retrieved:', { 
+            gameExists: !!game, 
+            status: game?.status, 
+            playerCount: players?.length 
+        });
+        
+        return state;
     }
 
     async function generateMap(gameId, mapSize, players) {

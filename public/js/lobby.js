@@ -99,9 +99,29 @@ class GameLobby {
         this.socket.on('chat-message', (message) => {
             this.addChatMessage(message);
         });
-
+		
+		// ✅ DEBUG: Log all socket events
+        this.socket.onAny((eventName, ...args) => {
+        console.log(`📡 SOCKET EVENT RECEIVED: ${eventName}`, args);
+        });
+    
+        this.socket.onAnyOutgoing((eventName, ...args) => {
+        console.log(`📤 SOCKET EVENT SENT: ${eventName}`, args);
+        });
+    
+        // ✅ Debug error events specifically
         this.socket.on('error', (error) => {
-            Utils.showError(error.message);
+        console.error('❌ SOCKET ERROR:', error);
+        Utils.showError(`Socket-Fehler: ${error.message || error}`);
+        });
+    
+        // ✅ Debug connect/disconnect
+        this.socket.on('connect', () => {
+        console.log('✅ Socket connected in lobby');
+        });
+    
+        this.socket.on('disconnect', (reason) => {
+        console.log('❌ Socket disconnected in lobby:', reason);
         });
 
         // UI events
@@ -486,23 +506,53 @@ handleGameStarted(data) {
         }
     }
 
-    startGame() {
-        if (!this.isHost) {
-            Utils.showError('Nur der Host kann das Spiel starten');
-            return;
-        }
-
-        const startBtn = document.getElementById('start-game');
-        if (startBtn) {
-            startBtn.disabled = true;
-            startBtn.textContent = '🚀 Starte Spiel...';
-        }
-
-        this.socket.emit('start-game', {
-            gameId: this.gameId,
-            playerName: this.playerName
-        });
+startGame() {
+    console.log('🎮 START GAME CLICKED - Beginning checks...');
+    console.log('🎮 Is Host:', this.isHost);
+    console.log('🎮 Game Data:', this.gameData);
+    console.log('🎮 Socket Connected:', this.socket.connected);
+    
+    if (!this.isHost) {
+        console.log('❌ Not host - aborting');
+        Utils.showError('Nur der Host kann das Spiel starten');
+        return;
     }
+
+    if (!this.socket.connected) {
+        console.log('❌ Socket not connected - aborting');
+        Utils.showError('Keine Verbindung zum Server');
+        return;
+    }
+
+    const startBtn = document.getElementById('start-game');
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = '🚀 Starte Spiel...';
+    }
+
+    console.log('🎮 Emitting start-game event with data:', {
+        gameId: this.gameId,
+        playerName: this.playerName
+    });
+
+    // Emit mit Acknowledgment für besseres Debugging
+    this.socket.emit('start-game', {
+        gameId: this.gameId,
+        playerName: this.playerName
+    }, (acknowledgment) => {
+        console.log('🎮 Start-game acknowledgment received:', acknowledgment);
+    });
+    
+    // Timeout falls nichts passiert
+    setTimeout(() => {
+        console.log('⏰ Start game timeout - no response after 10 seconds');
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = '🚀 Spiel starten';
+        }
+        Utils.showError('Timeout beim Starten des Spiels. Versuche es erneut.');
+    }, 10000);
+}
 
     showLeaveConfirmation() {
         Utils.showModal('leave-modal');
