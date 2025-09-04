@@ -22,17 +22,17 @@
                     <form id="create-game-form">
                         <div class="form-group">
                             <label for="player-name">Dein Spielername:</label>
-                            <input type="text" id="player-name" required maxlength="50" placeholder="Gib deinen Namen ein...">
+                            <input type="text" id="player-name" name="player-name" required maxlength="50" placeholder="Gib deinen Namen ein...">
                         </div>
 
                         <div class="form-group">
                             <label for="game-name">Spielname:</label>
-                            <input type="text" id="game-name" required maxlength="100" placeholder="Wie soll das Spiel heißen?">
+                            <input type="text" id="game-name" name="game-name" required maxlength="100" placeholder="Wie soll das Spiel heißen?">
                         </div>
 
                         <div class="form-group">
                             <label for="max-players">Maximale Spieleranzahl:</label>
-                            <select id="max-players" required>
+                            <select id="max-players" name="max-players" required>
                                 <option value="2">2 Spieler</option>
                                 <option value="3">3 Spieler</option>
                                 <option value="4" selected>4 Spieler</option>
@@ -45,7 +45,7 @@
 
                         <div class="form-group">
                             <label for="map-size">Kartengröße:</label>
-                            <select id="map-size" required>
+                            <select id="map-size" name="map-size" required>
                                 <option value="20x20">Klein (20x20)</option>
                                 <option value="30x30" selected>Mittel (30x30)</option>
                                 <option value="50x50">Groß (50x50)</option>
