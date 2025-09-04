@@ -112,8 +112,16 @@ router.post('/:gameId/join', async (req, res) => {
             return res.status(400).json({ error: 'Player name already taken' });
         }
 
+        // Determine if player should be host (if no players in game currently)
+        const shouldBeHost = currentPlayers.length === 0;
+        
+        // If becoming host, also update the game's host_player field
+        if (shouldBeHost) {
+            await db.query('UPDATE games SET host_player = ? WHERE id = ?', [playerName, gameId]);
+        }
+
         // Add player to game
-        await db.players.addToGame(gameId, playerName, false);
+        await db.players.addToGame(gameId, playerName, shouldBeHost);
 
         res.json({ 
             message: 'Joined game successfully',

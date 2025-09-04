@@ -306,6 +306,8 @@ class GameLobby {
         
         if (!hostControls || !startBtn) return;
 
+        console.log('Updating host controls. IsHost:', this.isHost);
+
         if (this.isHost) {
             hostControls.classList.remove('hidden');
             

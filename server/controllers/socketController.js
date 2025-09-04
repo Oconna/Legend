@@ -229,9 +229,15 @@ module.exports = (io) => {
                                 if (wasHost) {
                                     const updatedGameState = await getGameState(socket.gameId);
                                     if (updatedGameState.players.length > 0) {
+                                        // First, remove host status from all players in this game
+                                        await db.query(
+                                            'UPDATE game_players SET is_host = ? WHERE game_id = ?', 
+                                            [false, socket.gameId]
+                                        );
+                                        
                                         const newHost = updatedGameState.players[0];
                                         
-                                        // Update host status in database
+                                        // Update host status in database for new host
                                         await db.query(
                                             'UPDATE game_players SET is_host = ? WHERE game_id = ? AND id = ?', 
                                             [true, socket.gameId, newHost.id]
@@ -244,6 +250,8 @@ module.exports = (io) => {
                                         );
                                         
                                         const finalGameState = await getGameState(socket.gameId);
+                                        
+                                        console.log(`Host transferred after disconnect from ${socket.playerName} to ${newHost.player_name} in game ${socket.gameId}`);
                                         
                                         io.to(`game-${socket.gameId}`).emit('player-left', { 
                                             playerName: socket.playerName,
