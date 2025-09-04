@@ -199,6 +199,73 @@ module.exports = (io) => {
         // Disconnect handler
         socket.on('disconnect', () => {
             console.log('User disconnected:', socket.id);
+            
+            // If user was in a game, handle it as leaving the game
+            if (socket.gameId && socket.playerName) {
+                // Use setTimeout to allow for reconnection attempts
+                setTimeout(async () => {
+                    try {
+                        // Check if player is still in game (might have reconnected)
+                        const gameState = await getGameState(socket.gameId);
+                        const playerStillInGame = gameState?.players?.find(p => p.player_name === socket.playerName);
+                        
+                        if (playerStillInGame) {
+                            // Auto-leave the game after disconnect timeout
+                            const leavingPlayer = playerStillInGame;
+                            const wasHost = leavingPlayer.is_host || false;
+                            
+                            // Remove player from database
+                            await db.players.removeFromGame(socket.gameId, socket.playerName);
+                            
+                            // Check remaining player count
+                            const remainingPlayerCount = await db.games.getPlayerCount(socket.gameId);
+                            
+                            if (remainingPlayerCount === 0) {
+                                // Delete the game
+                                await db.games.deleteGame(socket.gameId);
+                                console.log(`Game ${socket.gameId} deleted after disconnect - no players remaining`);
+                            } else {
+                                // Handle host reassignment if needed
+                                if (wasHost) {
+                                    const updatedGameState = await getGameState(socket.gameId);
+                                    if (updatedGameState.players.length > 0) {
+                                        const newHost = updatedGameState.players[0];
+                                        await db.query(
+                                            'UPDATE game_players SET is_host = TRUE WHERE game_id = ? AND id = ?', 
+                                            [socket.gameId, newHost.id]
+                                        );
+                                        
+                                        const finalGameState = await getGameState(socket.gameId);
+                                        
+                                        io.to(`game-${socket.gameId}`).emit('player-left', { 
+                                            playerName: socket.playerName,
+                                            gameState: finalGameState,
+                                            newHost: newHost.player_name,
+                                            wasHost: true,
+                                            disconnected: true
+                                        });
+                                        
+                                        io.to(`game-${socket.gameId}`).emit('new-host-assigned', {
+                                            newHostName: newHost.player_name,
+                                            message: `${newHost.player_name} ist jetzt der neue Host! (${socket.playerName} ist disconnected)`
+                                        });
+                                    }
+                                } else {
+                                    const updatedGameState = await getGameState(socket.gameId);
+                                    io.to(`game-${socket.gameId}`).emit('player-left', { 
+                                        playerName: socket.playerName,
+                                        gameState: updatedGameState,
+                                        wasHost: false,
+                                        disconnected: true
+                                    });
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error handling disconnect cleanup:', error);
+                    }
+                }, 10000); // 10 seconds grace period for reconnection
+            }
         });
     });
 

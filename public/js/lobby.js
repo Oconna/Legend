@@ -179,9 +179,39 @@ class GameLobby {
     }
 
     handlePlayerLeft(data) {
-        Utils.showInfo(`${data.playerName} hat das Spiel verlassen`);
+        if (data.wasHost && data.newHost) {
+            Utils.showInfo(`${data.playerName} hat das Spiel verlassen. ${data.newHost} ist jetzt der Host.`);
+            
+            // Update host status if current player is new host
+            if (data.newHost === this.playerName) {
+                this.isHost = true;
+                Utils.showSuccess('Du bist jetzt der Host des Spiels!');
+            }
+        } else {
+            Utils.showInfo(`${data.playerName} hat das Spiel verlassen`);
+        }
+        
         this.updateGameInfo();
         this.updatePlayersList(data.gameState.players);
+        this.updateHostControls();
+    }
+
+    handleGameDeleted(data) {
+        Utils.showError('Das Spiel wurde gelöscht, da keine Spieler mehr vorhanden sind.');
+        this.showLoadingOverlay('Spiel gelöscht...', 'Weiterleitung zur Startseite...');
+        
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 3000);
+    }
+
+    handleNewHostAssigned(data) {
+        Utils.showInfo(data.message);
+        
+        if (data.newHostName === this.playerName) {
+            this.isHost = true;
+            this.updateHostControls();
+        }
     }
 
     updateGameInfo() {

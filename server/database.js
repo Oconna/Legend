@@ -97,6 +97,17 @@ const db = {
         updateCurrentTurn: async (gameId, turn, playerId) => {
             const sql = 'UPDATE games SET current_turn = ?, current_player_turn = ? WHERE id = ?';
             return db.query(sql, [turn, playerId, gameId]);
+        },
+
+        deleteGame: async (gameId) => {
+            const sql = 'DELETE FROM games WHERE id = ?';
+            return db.query(sql, [gameId]);
+        },
+
+        getPlayerCount: async (gameId) => {
+            const sql = 'SELECT COUNT(*) as count FROM game_players WHERE game_id = ?';
+            const result = await db.query(sql, [gameId]);
+            return result[0]?.count || 0;
         }
     },
 
