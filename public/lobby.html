@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Game - Spiellobby</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/lobby.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏰 Spiellobby</h1>
+            <div class="game-info">
+                <div id="game-name" class="game-title">Spiel wird geladen...</div>
+                <div id="game-details" class="game-subtitle"></div>
+            </div>
+        </header>
+
+        <main>
+            <div class="lobby-content">
+                <!-- Players Section -->
+                <section class="players-section">
+                    <div class="card">
+                        <h2>👥 Spieler</h2>
+                        <div id="players-list" class="players-list">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                Lade Spieler...
+                            </div>
+                        </div>
+                        
+                        <div class="lobby-actions">
+                            <button id="ready-toggle" class="btn btn-success" disabled>
+                                ✅ Bereit
+                            </button>
+                            <button id="leave-game" class="btn btn-danger">
+                                🚪 Spiel verlassen
+                            </button>
+                        </div>
+
+                        <div id="host-controls" class="host-controls hidden">
+                            <hr>
+                            <h3>🎮 Host-Aktionen</h3>
+                            <button id="start-game" class="btn btn-primary" disabled>
+                                🚀 Spiel starten
+                            </button>
+                            <p class="host-info">
+                                Alle Spieler müssen bereit sein, bevor das Spiel gestartet werden kann.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Chat Section -->
+                <section class="chat-section">
+                    <div class="card">
+                        <div class="chat-container">
+                            <div class="chat-header">
+                                💬 Lobby-Chat
+                            </div>
+                            <div id="chat-messages" class="chat-messages">
+                                <!-- Chat messages will be loaded here -->
+                            </div>
+                            <div class="chat-input">
+                                <input type="text" id="chat-input" placeholder="Nachricht eingeben..." maxlength="500">
+                                <button id="send-chat" class="btn btn-primary">
+                                    📤 Senden
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>
+                <a href="/" class="btn btn-secondary">← Zurück zur Startseite</a>
+            </p>
+        </footer>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="leave-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Spiel verlassen?</h2>
+                <button class="close" onclick="Utils.hideModal('leave-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Bist du sicher, dass du das Spiel verlassen möchtest?</p>
+                <p>Du kannst später nicht mehr beitreten.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Utils.hideModal('leave-modal')">
+                    Abbrechen
+                </button>
+                <button id="confirm-leave" class="btn btn-danger">
+                    Ja, verlassen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div id="loading-text">Starte Spiel...</div>
+        </div>
+    </div>
+
+    <!-- Error/Success Messages -->
+    <div id="message-container" class="message-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/lobby.js"></script>
+</body>
+</html>

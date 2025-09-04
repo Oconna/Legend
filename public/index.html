@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Game - Lobby</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/index.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏰 Strategy Game</h1>
+            <p>Online Multiplayer Strategiespiel</p>
+        </header>
+
+        <main>
+            <div class="game-sections">
+                <!-- Create Game Section -->
+                <section class="game-section">
+                    <h2>🎮 Neues Spiel erstellen</h2>
+                    <form id="create-game-form">
+                        <div class="form-group">
+                            <label for="player-name">Dein Spielername:</label>
+                            <input type="text" id="player-name" required maxlength="50" placeholder="Gib deinen Namen ein...">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="game-name">Spielname:</label>
+                            <input type="text" id="game-name" required maxlength="100" placeholder="Wie soll das Spiel heißen?">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max-players">Maximale Spieleranzahl:</label>
+                            <select id="max-players" required>
+                                <option value="2">2 Spieler</option>
+                                <option value="3">3 Spieler</option>
+                                <option value="4" selected>4 Spieler</option>
+                                <option value="5">5 Spieler</option>
+                                <option value="6">6 Spieler</option>
+                                <option value="7">7 Spieler</option>
+                                <option value="8">8 Spieler</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="map-size">Kartengröße:</label>
+                            <select id="map-size" required>
+                                <option value="20x20">Klein (20x20)</option>
+                                <option value="30x30" selected>Mittel (30x30)</option>
+                                <option value="50x50">Groß (50x50)</option>
+                                <option value="100x100">Riesig (100x100)</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            🚀 Spiel erstellen
+                        </button>
+                    </form>
+                </section>
+
+                <!-- Join Game Section -->
+                <section class="game-section">
+                    <h2>🔍 Verfügbare Spiele</h2>
+                    
+                    <div class="join-form">
+                        <div class="form-group">
+                            <label for="join-player-name">Dein Spielername:</label>
+                            <input type="text" id="join-player-name" maxlength="50" placeholder="Gib deinen Namen ein...">
+                        </div>
+                        <button id="refresh-games" class="btn btn-secondary">
+                            🔄 Spiele aktualisieren
+                        </button>
+                    </div>
+
+                    <div id="games-list" class="games-list">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Lade verfügbare Spiele...
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>Online Multiplayer Strategy Game v1.0</p>
+        </footer>
+    </div>
+
+    <!-- Error/Success Messages -->
+    <div id="message-container" class="message-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/index.js"></script>
+</body>
+</html>
