@@ -129,14 +129,17 @@ const db = {
         },
 
         cleanupEmptyGames: async () => {
-            const sql = `
-                DELETE g FROM games g
-                LEFT JOIN game_players gp ON g.id = gp.game_id
-                WHERE gp.id IS NULL
-            `;
-            const result = await db.query(sql);
-            return result.affectedRows;
-        },
+    // Only delete games that are in 'lobby' status and have been empty for more than 10 minutes
+    const sql = `
+        DELETE g FROM games g
+        LEFT JOIN game_players gp ON g.id = gp.game_id
+        WHERE gp.id IS NULL 
+        AND g.status = 'lobby' 
+        AND g.created_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+    `;
+    const result = await db.query(sql);
+    return result.affectedRows;
+},
 
         // ✅ NEUE FUNKTION: Spiel-Konsistenz prüfen und reparieren
         validateAndRepair: async (gameId) => {

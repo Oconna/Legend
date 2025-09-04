@@ -61,13 +61,21 @@ router.post('/', async (req, res) => {
 router.get('/:gameId', async (req, res) => {
     try {
         const gameId = req.params.gameId;
+        
+        if (!gameId || isNaN(gameId)) {
+            return res.status(400).json({ error: 'Invalid game ID' });
+        }
+        
         const game = await db.games.findById(gameId);
         
         if (!game) {
+            console.log(`Game ${gameId} not found in database`);
             return res.status(404).json({ error: 'Game not found' });
         }
 
         const players = await db.players.findByGame(gameId);
+        
+        console.log(`Game ${gameId} found: status=${game.status}, players=${players.length}`);
         
         res.json({
             game,
@@ -179,6 +187,32 @@ router.get('/:gameId/players/:playerName/status', async (req, res) => {
     } catch (error) {
         console.error('Error checking player status:', error);
         res.status(500).json({ error: 'Failed to check player status' });
+    }
+});
+
+// GET /api/games/:gameId/status - Check game status
+router.get('/:gameId/status', async (req, res) => {
+    try {
+        const gameId = req.params.gameId;
+        const game = await db.games.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ error: 'Game not found' });
+        }
+
+        const players = await db.players.findByGame(gameId);
+        
+        res.json({
+            status: game.status,
+            playerCount: players.length,
+            maxPlayers: game.max_players,
+            created: game.created_at,
+            gameExists: true
+        });
+
+    } catch (error) {
+        console.error('Error checking game status:', error);
+        res.status(500).json({ error: 'Failed to check game status' });
     }
 });
 

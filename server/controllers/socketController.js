@@ -86,39 +86,55 @@ module.exports = (io) => {
         });
 
         // Start game (only host can do this)
-        socket.on('start-game', async (data) => {
-            try {
-                const { gameId, playerName } = data;
-                
-                // Verify player is host
-                const players = await db.players.findByGame(gameId);
-                const player = players.find(p => p.player_name === playerName);
-                
-                if (!player || !player.is_host) {
-                    socket.emit('error', { message: 'Only the host can start the game' });
-                    return;
-                }
+socket.on('start-game', async (data) => {
+    try {
+        const { gameId, playerName } = data;
+        
+        console.log(`Starting game ${gameId} by ${playerName}`);
+        
+        // Verify player is host
+        const players = await db.players.findByGame(gameId);
+        const player = players.find(p => p.player_name === playerName);
+        
+        if (!player || !player.is_host) {
+            socket.emit('error', { message: 'Only the host can start the game' });
+            return;
+        }
 
-                // Check if all players are ready
-                const allReady = players.every(p => p.is_ready);
-                if (!allReady) {
-                    socket.emit('error', { message: 'Not all players are ready' });
-                    return;
-                }
+        // Check if all players are ready
+        const allReady = players.every(p => p.is_ready);
+        if (!allReady || players.length < 2) {
+            socket.emit('error', { message: 'Not all players are ready or insufficient players' });
+            return;
+        }
 
-                // Update game status to race selection
-                await db.games.updateStatus(gameId, 'race_selection');
-                
-                // Notify all players to move to race selection
-                io.to(`game-${gameId}`).emit('game-started', { 
-                    redirectUrl: `/race-selection/${gameId}`
-                });
+        console.log(`All ${players.length} players are ready, starting game...`);
 
-            } catch (error) {
-                console.error('Error starting game:', error);
-                socket.emit('error', { message: 'Failed to start game' });
-            }
+        // Update game status BEFORE sending redirect
+        await db.games.updateStatus(gameId, 'race_selection');
+        
+        // Wait a moment to ensure database update is complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log('Game status updated to race_selection');
+        
+        // Send initial race selection state to all players
+        const gameState = await getGameState(gameId);
+        io.to(`game-${gameId}`).emit('game-state-update', gameState);
+        
+        // Then notify all players to move to race selection
+        io.to(`game-${gameId}`).emit('game-started', { 
+            redirectUrl: `/race-selection/${gameId}`,
+            gameStatus: 'race_selection'
         });
+
+        console.log(`Game ${gameId} successfully started, players redirected to race selection`);
+
+    } catch (error) {
+        console.error('Error starting game:', error);
+        socket.emit('error', { message: 'Failed to start game: ' + error.message });
+    }
+});
 
         // Race selection
         socket.on('select-race', async (data) => {

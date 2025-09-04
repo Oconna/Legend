@@ -297,17 +297,28 @@ class GameLobby {
         }
     }
 
-    handleGameStarted(data) {
-        this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
-        
-        // ✅ WICHTIG: isLeaving auf false setzen für Rassenauswahl-Übergang
-        this.isLeaving = false;
-        
-        setTimeout(() => {
-            // Direkte Weiterleitung ohne isLeaving flag zu setzen
-            window.location.href = data.redirectUrl;
-        }, 1500);
-    }
+handleGameStarted(data) {
+    console.log('Game started, transitioning to race selection...', data);
+    
+    this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
+    
+    // Clear the isLeaving flag - this is a legitimate transition
+    this.isLeaving = false;
+    
+    // Clear any existing timers or intervals
+    clearInterval(this.reconnectTimer);
+    
+    // Add gameStatus to URL for better state management
+    const redirectUrl = data.redirectUrl.includes('?') 
+        ? `${data.redirectUrl}&status=race_selection&player=${encodeURIComponent(this.playerName)}`
+        : `${data.redirectUrl}?status=race_selection&player=${encodeURIComponent(this.playerName)}`;
+    
+    setTimeout(() => {
+        // Don't disconnect socket - let it reconnect on new page
+        console.log('Redirecting to:', redirectUrl);
+        window.location.href = redirectUrl;
+    }, 1500);
+}
 
     handlePlayerLeft(data) {
         if (data.wasHost && data.newHost) {

@@ -15,19 +15,67 @@ class RaceSelection {
         this.init();
     }
 
-    init() {
-        if (!this.gameId || !this.playerName) {
-            Utils.showError('Fehlende Spiel- oder Spielerinformationen');
-            setTimeout(() => window.location.href = '/', 2000);
-            return;
+init() {
+    if (!this.gameId || !this.playerName) {
+        Utils.showError('Fehlende Spiel- oder Spielerinformationen');
+        setTimeout(() => window.location.href = '/', 2000);
+        return;
+    }
+
+    this.bindEvents();
+    this.setupSocketReconnection(); // Add this line
+    this.verifyGameAccess(); // Change this line
+}
+
+// Add this new method
+setupSocketReconnection() {
+    this.socket.on('connect', () => {
+        console.log('Socket connected in race selection');
+        if (this.gameId && this.playerName) {
+            this.joinGameRoom();
+        }
+    });
+
+    this.socket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        // Don't show error immediately - allow for quick reconnection
+    });
+
+    this.socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        Utils.showError('Verbindung zum Server verloren. Lade Seite neu...');
+    });
+}
+
+// Replace loadGameData() with verifyGameAccess()
+async verifyGameAccess() {
+    try {
+        console.log(`Verifying access to game ${this.gameId} for player ${this.playerName}...`);
+        
+        // First check if player is still in the game
+        const playerStatus = await Utils.get(`/api/games/${this.gameId}/players/${encodeURIComponent(this.playerName)}/status`);
+        
+        if (!playerStatus.inGame) {
+            throw new Error('Du bist nicht mehr in diesem Spiel');
         }
 
-        this.bindEvents();
+        // Then load game data
+        await this.loadGameData();
+        await this.loadRaces();
+        await this.loadChatHistory();
+        
+        // Join socket room after verification
         this.joinGameRoom();
-        this.loadGameData();
-        this.loadRaces();
-        this.loadChatHistory();
+
+    } catch (error) {
+        console.error('Error verifying game access:', error);
+        Utils.showError('Fehler beim Zugriff auf das Spiel: ' + error.message);
+        
+        setTimeout(() => {
+            window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+        }, 3000);
     }
+}
 
     bindEvents() {
         // Socket events
