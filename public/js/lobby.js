@@ -445,4 +445,8 @@ let gameLobby;
 
 document.addEventListener('DOMContentLoaded', () => {
     gameLobby = new GameLobby();
+    
+    // Make debug function globally available
+    window.debugLobby = () => gameLobby.debugStatus();
+    console.log('🐛 Debug function available: debugLobby()');
 });
