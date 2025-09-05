@@ -320,11 +320,15 @@ class GameLobby {
     }
 
     handleGameStarted(data) {
-        console.log('Game started, transitioning to race selection...', data);
+        console.log('🎮 Game started, transitioning to race selection...', data);
         
-        // ✅ IMPORTANT: Set navigation flags to prevent leave event
+        // ✅ CRITICAL: Set navigation flags and remove event listeners
         this.isNavigating = true;
         this.isLeaving = false;
+        
+        // ✅ CRITICAL: Remove event listeners to prevent leave-game
+        window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+        window.removeEventListener('unload', this.unloadHandler);
         
         this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
         
@@ -335,9 +339,10 @@ class GameLobby {
         
         setTimeout(() => {
             const redirectUrl = `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}&transition=start`;
-            console.log('Redirecting to:', redirectUrl);
+            console.log('🚀 Redirecting to race selection with navigation flag set:', redirectUrl);
             window.location.href = redirectUrl;
-        }, 1000); // Reduced delay
+        }, 1000);
+    }
     }
 
     handlePlayerLeft(data) {
