@@ -343,7 +343,7 @@ class GameLobby {
             window.location.href = redirectUrl;
         }, 1000);
     }
-    }
+    
 
     handlePlayerLeft(data) {
         if (data.wasHost && data.newHost) {
