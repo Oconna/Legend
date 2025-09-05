@@ -104,11 +104,6 @@ router.post('/:gameId/join', async (req, res) => {
             return res.status(404).json({ error: 'Game not found' });
         }
 
-        // ✅ IMPROVED: Allow join for playing games (rejoin scenario)
-        if (game.status !== 'lobby' && game.status !== 'playing' && game.status !== 'race_selection') {
-            return res.status(400).json({ error: 'Game is not in a joinable state' });
-        }
-
         // Get current players
         const currentPlayers = await db.players.findByGame(gameId);
         
@@ -119,7 +114,7 @@ router.post('/:gameId/join', async (req, res) => {
             // Player already exists in game - this is a rejoin attempt
             console.log(`Player ${playerName} rejoining game ${gameId} (status: ${game.status})`);
             
-            // Allow rejoin for any game phase
+            // ✅ CRITICAL: Allow rejoin for ANY game phase
             return res.json({ 
                 message: 'Rejoined game successfully',
                 redirectUrl: getRedirectUrlForGameStatus(game.status, gameId),
@@ -128,9 +123,13 @@ router.post('/:gameId/join', async (req, res) => {
             });
         }
 
-        // New player joining - only allow for lobby phase
+        // ✅ NEW PLAYER JOINING - Check game status requirements
+        if (game.status === 'playing' || game.status === 'race_selection') {
+            return res.status(400).json({ error: 'Cannot join game in progress - only existing players can rejoin' });
+        }
+
         if (game.status !== 'lobby') {
-            return res.status(400).json({ error: 'Cannot join game in progress' });
+            return res.status(400).json({ error: 'Game is not in a joinable state' });
         }
 
         if (currentPlayers.length >= game.max_players) {
