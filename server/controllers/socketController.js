@@ -660,7 +660,7 @@ module.exports = (io) => {
 
             // Get current game state BEFORE removing player
             const gameStateBefore = await getGameState(gameId);
-            if (!gameStateBefore || !gameStateBefore.players) {
+            if (!gameStateBefore || !gameStateBefore.game || !gameStateBefore.players) {
                 console.log('⚠️ Game not found or no players');
                 return;
             }
@@ -739,7 +739,7 @@ module.exports = (io) => {
 
         } catch (error) {
             console.error('❌ Error in handlePlayerLeave:', error);
-            throw error;
+            // Don't throw error to prevent further issues
         }
     }
 
