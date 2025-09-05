@@ -25,8 +25,8 @@ class GameMap {
         this.selectedTile = null;
         this.hoveredTile = null;
         
-        // Highlights
-        this.moveabletiles = new Set();
+        // ✅ FIX: Initialize highlights properly
+        this.moveableTiles = new Set();
         this.attackableTiles = new Set();
         this.pathTiles = [];
         
@@ -327,23 +327,27 @@ class GameMap {
             this.renderTileHighlight(this.selectedTile.x, this.selectedTile.y, '#2196F3', 0.3);
         }
         
-        // Moveable tiles
-        this.moveableTenable.forEach(coord => {
-            const [x, y] = coord.split(',').map(Number);
-            this.renderTileHighlight(x, y, '#4CAF50', 0.2);
-        });
+        // ✅ FIX: Safely check and iterate over highlights
+        if (this.moveableTiles && this.moveableTiles.forEach) {
+            this.moveableTiles.forEach(coord => {
+                const [x, y] = coord.split(',').map(Number);
+                this.renderTileHighlight(x, y, '#4CAF50', 0.2);
+            });
+        }
         
-        // Attackable tiles
-        this.attackableTiles.forEach(coord => {
-            const [x, y] = coord.split(',').map(Number);
-            this.renderTileHighlight(x, y, '#f44336', 0.2);
-        });
+        if (this.attackableTiles && this.attackableTiles.forEach) {
+            this.attackableTiles.forEach(coord => {
+                const [x, y] = coord.split(',').map(Number);
+                this.renderTileHighlight(x, y, '#f44336', 0.2);
+            });
+        }
         
-        // Path tiles
-        this.pathTiles.forEach(coord => {
-            const [x, y] = coord.split(',').map(Number);
-            this.renderTileHighlight(x, y, '#FF9800', 0.4);
-        });
+        if (this.pathTiles && Array.isArray(this.pathTiles)) {
+            this.pathTiles.forEach(coord => {
+                const [x, y] = coord.split(',').map(Number);
+                this.renderTileHighlight(x, y, '#FF9800', 0.4);
+            });
+        }
         
         // Hovered tile
         if (this.hoveredTile) {
@@ -584,13 +588,13 @@ class GameMap {
 
     // Highlight Management
     setMoveableTiles(tiles) {
-        this.moveableTiles.clear();
+        this.moveableTiles = new Set();
         tiles.forEach(tile => this.moveableTiles.add(`${tile.x},${tile.y}`));
         this.render();
     }
 
     setAttackableTiles(tiles) {
-        this.attackableTiles.clear();
+        this.attackableTiles = new Set();
         tiles.forEach(tile => this.attackableTiles.add(`${tile.x},${tile.y}`));
         this.render();
     }
@@ -601,8 +605,8 @@ class GameMap {
     }
 
     clearHighlights() {
-        this.moveableTiles.clear();
-        this.attackableTiles.clear();
+        this.moveableTiles = new Set();
+        this.attackableTiles = new Set();
         this.pathTiles = [];
         this.render();
     }

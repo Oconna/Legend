@@ -210,7 +210,7 @@ module.exports = (io) => {
                 // Check if all players have confirmed their races
                 const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
                 if (allConfirmed) {
-                    // ✅ AKTIVIERT: Kartengenerierung
+                    // ✅ AKTIVIERTE UND VERBESSERTE KARTENGENERIERUNG
                     console.log('🗺️ Starting map generation...');
                     io.to(`game-${gameId}`).emit('map-generation-start');
                     
@@ -221,8 +221,14 @@ module.exports = (io) => {
                         // Generate map
                         await generateMap(gameId, width, height, gameState.players);
                         
-                        // Set first player as current turn
+                        // Set first player as current turn with gold initialization
                         const firstPlayer = gameState.players.sort((a, b) => a.player_order - b.player_order)[0];
+                        
+                        // Initialize all players with starting gold
+                        for (const player of gameState.players) {
+                            await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [200, player.id]);
+                        }
+                        
                         await db.games.updateCurrentTurn(gameId, 1, firstPlayer.id);
                         
                         // Update game status to playing
@@ -715,9 +721,11 @@ module.exports = (io) => {
         const mapGenerator = require('../utils/mapGenerator');
         
         try {
+            console.log(`🗺️ Generating map: ${width}x${height} for ${players.length} players`);
             await mapGenerator.generateMap(gameId, width, height, players);
+            console.log(`✅ Map generation completed for game ${gameId}`);
         } catch (error) {
-            console.error('Error generating map:', error);
+            console.error('❌ Error generating map:', error);
             throw error;
         }
     }
@@ -752,7 +760,7 @@ module.exports = (io) => {
         }
     }
 
-    async function getTierBonus(tierLevel) {
+    function getTierBonus(tierLevel) {
         const bonuses = { 1: 0, 2: 0.2, 3: 0.4 };
         return bonuses[tierLevel] || 0;
     }

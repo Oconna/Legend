@@ -3,7 +3,10 @@ class RaceSelection {
     constructor() {
         this.socket = io();
         this.gameId = Utils.getGameId();
-        this.playerName = Utils.getPlayerName();
+        
+        // ✅ FIX: Improved player name detection
+        this.playerName = this.getPlayerName();
+        
         this.gameData = null;
         this.availableRaces = [];
         this.selectedRace = null;
@@ -15,134 +18,137 @@ class RaceSelection {
         this.init();
     }
 
-init() {
-    if (!this.gameId || !this.playerName) {
-        Utils.showError('Fehlende Spiel- oder Spielerinformationen');
-        setTimeout(() => window.location.href = '/', 2000);
-        return;
+    // ✅ IMPROVED: Multiple methods to get player name
+    getPlayerName() {
+        // 1. Try URL parameter
+        let playerName = Utils.getUrlParameter('player');
+        
+        // 2. Try localStorage
+        if (!playerName) {
+            playerName = Utils.getFromStorage('playerName');
+        }
+        
+        // 3. Try transition parameter from game start
+        if (!playerName) {
+            const transition = Utils.getUrlParameter('transition');
+            if (transition === 'start') {
+                // This came from lobby, try localStorage again
+                playerName = Utils.getFromStorage('playerName');
+            }
+        }
+        
+        return playerName;
     }
 
-    console.log(`🎯 Initializing race selection for game ${this.gameId}, player ${this.playerName}`);
-    
-    this.bindEvents();
-    this.setupConnectionHandling();
-    
-    // ✅ Wait for socket connection before proceeding
-    if (this.socket.connected) {
-        this.startLoadSequence();
-    } else {
-        this.socket.on('connect', () => {
-            console.log('✅ Socket connected, starting load sequence');
+    init() {
+        if (!this.gameId || !this.playerName) {
+            Utils.showError('Fehlende Spiel- oder Spielerinformationen');
+            setTimeout(() => window.location.href = '/', 2000);
+            return;
+        }
+
+        console.log(`🎯 Initializing race selection for game ${this.gameId}, player ${this.playerName}`);
+        
+        this.bindEvents();
+        this.setupConnectionHandling();
+        
+        // ✅ Wait for socket connection before proceeding
+        if (this.socket.connected) {
             this.startLoadSequence();
+        } else {
+            this.socket.on('connect', () => {
+                console.log('✅ Socket connected, starting load sequence');
+                this.startLoadSequence();
+            });
+        }
+    }
+
+    setupConnectionHandling() {
+        this.socket.on('connect', () => {
+            console.log('🔌 Socket connected in race selection');
+        });
+
+        this.socket.on('disconnect', (reason) => {
+            console.log('🔌 Socket disconnected:', reason);
+            if (reason !== 'io client disconnect') {
+                Utils.showError('Verbindung verloren. Versuche zu reconnectieren...');
+            }
+        });
+
+        this.socket.on('connect_error', (error) => {
+            console.error('❌ Socket connection error:', error);
+            Utils.showError('Verbindungsfehler. Bitte Seite neu laden.');
         });
     }
-}
 
-setupConnectionHandling() {
-    this.socket.on('connect', () => {
-        console.log('🔌 Socket connected in race selection');
-    });
-
-    this.socket.on('disconnect', (reason) => {
-        console.log('🔌 Socket disconnected:', reason);
-        if (reason !== 'io client disconnect') {
-            Utils.showError('Verbindung verloren. Versuche zu reconnectieren...');
-        }
-    });
-
-    this.socket.on('connect_error', (error) => {
-        console.error('❌ Socket connection error:', error);
-        Utils.showError('Verbindungsfehler. Bitte Seite neu laden.');
-    });
-}
-
-async startLoadSequence() {
-    try {
-        // Step 1: Verify game exists and player has access
-        console.log('📝 Step 1: Verifying game access...');
-        await this.verifyGameAccess();
-        
-        // Step 2: Join socket room
-        console.log('🏠 Step 2: Joining game room...');
-        this.joinGameRoom();
-        
-        // Step 3: Load races
-        console.log('🛡️ Step 3: Loading races...');
-        await this.loadRaces();
-        
-        // Step 4: Load chat
-        console.log('💬 Step 4: Loading chat...');
-        await this.loadChatHistory();
-        
-        console.log('✅ Race selection fully initialized');
-        
-    } catch (error) {
-        console.error('❌ Error in load sequence:', error);
-        Utils.showError('Fehler beim Laden der Rassenauswahl: ' + error.message);
-        
-        // Fallback to lobby after 3 seconds
-        setTimeout(() => {
-            window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-        }, 3000);
-    }
-}
-
-setupSocketReconnection() {
-    this.socket.on('connect', () => {
-        console.log('Socket connected in race selection');
-        if (this.gameId && this.playerName) {
+    async startLoadSequence() {
+        try {
+            // Step 1: Verify game exists and player has access
+            console.log('📝 Step 1: Verifying game access...');
+            await this.verifyGameAccess();
+            
+            // Step 2: Join socket room
+            console.log('🏠 Step 2: Joining game room...');
             this.joinGameRoom();
+            
+            // Step 3: Load races
+            console.log('🛡️ Step 3: Loading races...');
+            await this.loadRaces();
+            
+            // Step 4: Load chat
+            console.log('💬 Step 4: Loading chat...');
+            await this.loadChatHistory();
+            
+            console.log('✅ Race selection fully initialized');
+            
+        } catch (error) {
+            console.error('❌ Error in load sequence:', error);
+            Utils.showError('Fehler beim Laden der Rassenauswahl: ' + error.message);
+            
+            // Fallback to lobby after 3 seconds with player parameter
+            setTimeout(() => {
+                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            }, 3000);
         }
-    });
-
-    this.socket.on('disconnect', (reason) => {
-        console.log('Socket disconnected:', reason);
-        // Don't show error immediately - allow for quick reconnection
-    });
-
-    this.socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-        Utils.showError('Verbindung zum Server verloren. Lade Seite neu...');
-    });
-}
-
-// Replace loadGameData() with verifyGameAccess()
-async verifyGameAccess() {
-    try {
-        const data = await Utils.get(`/api/games/${this.gameId}`);
-        
-        if (!data || !data.game) {
-            throw new Error('Spiel nicht gefunden');
-        }
-
-        // ✅ IMPORTANT: Allow both lobby and race_selection status
-        if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
-            throw new Error(`Spiel ist in falscher Phase: ${data.game.status}`);
-        }
-
-        // Check if player is in the game
-        const currentPlayer = data.players.find(p => p.player_name === this.playerName);
-        if (!currentPlayer) {
-            throw new Error('Du bist nicht in diesem Spiel');
-        }
-
-        this.gameData = data;
-        this.updateGameInfo();
-        
-        // Check if player already confirmed race
-        if (currentPlayer.race_confirmed) {
-            this.hasConfirmed = true;
-            this.selectedRace = currentPlayer.race_id;
-            this.showWaitingForConfirmation();
-        }
-        
-        console.log('✅ Game access verified successfully');
-        
-    } catch (error) {
-        console.error('❌ Game access verification failed:', error);
-        throw error;
     }
-}
+
+    // Replace loadGameData() with verifyGameAccess()
+    async verifyGameAccess() {
+        try {
+            const data = await Utils.get(`/api/games/${this.gameId}`);
+            
+            if (!data || !data.game) {
+                throw new Error('Spiel nicht gefunden');
+            }
+
+            // ✅ IMPORTANT: Allow both lobby and race_selection status
+            if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
+                throw new Error(`Spiel ist in falscher Phase: ${data.game.status}`);
+            }
+
+            // Check if player is in the game
+            const currentPlayer = data.players.find(p => p.player_name === this.playerName);
+            if (!currentPlayer) {
+                throw new Error('Du bist nicht in diesem Spiel');
+            }
+
+            this.gameData = data;
+            this.updateGameInfo();
+            
+            // Check if player already confirmed race
+            if (currentPlayer.race_confirmed) {
+                this.hasConfirmed = true;
+                this.selectedRace = currentPlayer.race_id;
+                this.showWaitingForConfirmation();
+            }
+            
+            console.log('✅ Game access verified successfully');
+            
+        } catch (error) {
+            console.error('❌ Game access verification failed:', error);
+            throw error;
+        }
+    }
 
     bindEvents() {
         // Socket events
@@ -214,54 +220,6 @@ async verifyGameAccess() {
                 gameId: this.gameId,
                 playerName: this.playerName
             });
-        }
-    }
-
-    async loadGameData() {
-        try {
-            console.log(`Loading game data for game ${this.gameId}...`);
-            const data = await Utils.get(`/api/games/${this.gameId}`);
-            
-            if (!data || !data.game) {
-                throw new Error('Spiel nicht gefunden');
-            }
-
-            console.log('Game data loaded:', data.game.status, 'Players:', data.players.length);
-
-            // ✅ FLEXIBLERE STATUS-PRÜFUNG
-            if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
-                Utils.showError(`Das Spiel befindet sich in Phase: ${data.game.status}`);
-                setTimeout(() => window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`, 2000);
-                return;
-            }
-
-            // Check if player is in the game
-            const currentPlayer = data.players.find(p => p.player_name === this.playerName);
-            if (!currentPlayer) {
-                Utils.showError('Du bist nicht in diesem Spiel');
-                setTimeout(() => window.location.href = '/', 2000);
-                return;
-            }
-
-            this.gameData = data;
-            this.updateGameInfo();
-            
-            // Check if player already confirmed race
-            if (currentPlayer.race_confirmed) {
-                this.hasConfirmed = true;
-                this.selectedRace = currentPlayer.race_id;
-                this.showWaitingForConfirmation();
-                console.log('Player already confirmed race:', currentPlayer.race_id);
-            }
-            
-        } catch (error) {
-            console.error('Error loading game data:', error);
-            Utils.showError('Fehler beim Laden der Spieldaten: ' + error.message);
-            
-            // Fallback nach 5 Sekunden
-            setTimeout(() => {
-                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-            }, 5000);
         }
     }
 
@@ -579,19 +537,18 @@ async verifyGameAccess() {
     }
 
     handleMapGenerationComplete(data) {
-        // ✅ ENTFERNT: Kartengenerierung wird später implementiert
-        // Für jetzt: Direkter Sprung zum Spiel nach Rassenbestätigung
-        console.log('Map generation would start here - implementing later');
+        console.log('Map generation complete, redirecting to game...');
         
         Utils.showSuccess('Alle Rassen bestätigt! Weiterleitung zum Spiel...');
+        
+        // ✅ ENSURE PLAYER PARAMETER IN REDIRECT
+        const redirectUrl = data.redirectUrl.includes('?') 
+            ? `${data.redirectUrl}&player=${encodeURIComponent(this.playerName)}`
+            : `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}`;
+            
         setTimeout(() => {
-            window.location.href = data.redirectUrl;
+            window.location.href = redirectUrl;
         }, 2000);
-    }
-
-    showMapGenerationProgress() {
-        // ✅ ENTFERNT: Wird später implementiert
-        console.log('Map generation progress - implementing later');
     }
 
     backToLobby() {

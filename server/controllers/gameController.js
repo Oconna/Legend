@@ -318,25 +318,38 @@ router.get('/:gameId/map', async (req, res) => {
     }
 });
 
-// GET /api/games/:gameId/units - Get units data
+// ✅ FIXED: GET /api/games/:gameId/units - Get units data
 router.get('/:gameId/units', async (req, res) => {
     try {
         const gameId = req.params.gameId;
         
+        console.log(`🔍 Fetching units for game: ${gameId}`);
+        
         if (!gameId || isNaN(gameId)) {
+            console.error('❌ Invalid game ID for units:', gameId);
             return res.status(400).json({ error: 'Invalid game ID' });
         }
         
-        const game = await db.games.findById(gameId);
+        const gameIdNum = parseInt(gameId);
+        
+        // Check if game exists
+        const game = await db.games.findById(gameIdNum);
         if (!game) {
+            console.log(`❌ Game ${gameIdNum} not found for units`);
             return res.status(404).json({ error: 'Game not found' });
         }
         
-        const unitsData = await db.units.findByGame(gameId);
-        res.json(unitsData);
+        console.log(`✅ Game ${gameIdNum} found, status: ${game.status}`);
+        
+        // Get units data - this might be empty for new games
+        const unitsData = await db.units.findByGame(gameIdNum);
+        console.log(`✅ Retrieved ${unitsData?.length || 0} units for game ${gameIdNum}`);
+        
+        // Always return an array, even if empty
+        res.json(unitsData || []);
         
     } catch (error) {
-        console.error('Error fetching units data:', error);
+        console.error('❌ Error fetching units data:', error);
         res.status(500).json({ error: 'Failed to fetch units data' });
     }
 });

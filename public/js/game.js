@@ -3,7 +3,10 @@ class GameController {
     constructor() {
         this.socket = io();
         this.gameId = Utils.getGameId();
-        this.playerName = Utils.getPlayerName();
+        
+        // ✅ FIX: Try multiple methods to get player name
+        this.playerName = this.getPlayerName();
+        
         this.gameData = null;
         this.players = [];
         this.currentPlayerId = null;
@@ -24,10 +27,36 @@ class GameController {
         this.init();
     }
 
+    // ✅ IMPROVED: Multiple methods to get player name
+    getPlayerName() {
+        // 1. Try URL parameter
+        let playerName = Utils.getUrlParameter('player');
+        
+        // 2. Try localStorage
+        if (!playerName) {
+            playerName = Utils.getFromStorage('playerName');
+        }
+        
+        // 3. Try to prompt user if both fail
+        if (!playerName) {
+            console.warn('No player name found, redirecting to lobby');
+            // We'll handle this in init()
+        }
+        
+        return playerName;
+    }
+
     async init() {
-        if (!this.gameId || !this.playerName) {
-            Utils.showError('Fehlende Spiel- oder Spielerinformationen');
+        // ✅ IMPROVED: Better validation
+        if (!this.gameId) {
+            Utils.showError('Keine Spiel-ID gefunden');
             setTimeout(() => window.location.href = '/', 2000);
+            return;
+        }
+
+        if (!this.playerName) {
+            Utils.showError('Kein Spielername gefunden');
+            setTimeout(() => window.location.href = `/lobby/${this.gameId}`, 2000);
             return;
         }
 
@@ -165,7 +194,11 @@ class GameController {
             }
 
             if (gameData.game.status !== 'playing') {
-                throw new Error(`Spiel ist in Phase: ${gameData.game.status}`);
+                Utils.showError(`Spiel ist in Phase: ${gameData.game.status}`);
+                setTimeout(() => {
+                    window.location.href = `/race-selection/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+                }, 2000);
+                return;
             }
 
             this.gameData = gameData.game;
@@ -205,15 +238,19 @@ class GameController {
 
     async loadMapData() {
         try {
+            console.log(`🗺️ Loading map data for game ${this.gameId}...`);
             const mapData = await Utils.get(`/api/games/${this.gameId}/map`);
+            
             if (mapData && mapData.length > 0) {
+                console.log(`✅ Map data loaded: ${mapData.length} tiles`);
                 await this.map.loadMap(mapData);
                 console.log('✅ Map loaded successfully');
             } else {
-                throw new Error('Keine Kartendaten gefunden');
+                console.log('⚠️ No map data found, showing placeholder');
+                this.showPlaceholderMap();
             }
         } catch (error) {
-            console.error('Error loading map:', error);
+            console.error('❌ Error loading map:', error);
             // Show placeholder map for development
             this.showPlaceholderMap();
         }
@@ -221,7 +258,10 @@ class GameController {
 
     async loadUnitsData() {
         try {
+            console.log(`🔍 Loading units data for game ${this.gameId}...`);
             const unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
+            
+            console.log(`✅ Units data received:`, unitsData);
             await this.units.loadUnits(unitsData || []);
             
             // Update map with units
@@ -229,8 +269,10 @@ class GameController {
             
             console.log(`✅ Loaded ${unitsData?.length || 0} units`);
         } catch (error) {
-            console.error('Error loading units:', error);
+            console.error('❌ Error loading units:', error);
+            // Don't throw error, just use empty units array
             await this.units.loadUnits([]);
+            this.map.updateUnits([]);
         }
     }
 
