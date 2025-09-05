@@ -628,7 +628,12 @@ class RaceSelection {
         this.isMapGenerating = false;
         this.isNavigating = true; // ✅ CRITICAL: Mark as intentional navigation
         
-        // ✅ CRITICAL: Remove event listeners to prevent leave events
+        // ✅ CRITICAL: Disconnect socket cleanly to prevent leave events
+        console.log('🔌 Disconnecting socket cleanly before navigation...');
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        
+        // ✅ CRITICAL: Remove all event listeners
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
         }
@@ -636,12 +641,12 @@ class RaceSelection {
             document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
         }
         
-        Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
-        
         // ✅ CRITICAL: Clear any existing timers
         if (this.navigationTimeout) {
             clearTimeout(this.navigationTimeout);
         }
+        
+        Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
         
         // ✅ ENSURE PLAYER PARAMETER IN REDIRECT
         const redirectUrl = data.redirectUrl.includes('?') 
@@ -650,10 +655,8 @@ class RaceSelection {
             
         console.log('🚀 Navigating to game with clean transition:', redirectUrl);
         
-        // Short delay to ensure UI updates, then navigate
-        setTimeout(() => {
-            window.location.href = redirectUrl;
-        }, 1000);
+        // ✅ CRITICAL: Immediate navigation to prevent any timing issues
+        window.location.href = redirectUrl;
     }
 
     backToLobby() {

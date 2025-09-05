@@ -665,6 +665,18 @@ module.exports = (io) => {
                 return;
             }
 
+            // ✅ CRITICAL: Don't delete games that are in playing phase
+            if (gameStateBefore.game.status === 'playing') {
+                console.log(`🎮 Game ${gameId} is in playing phase, not removing players during disconnect`);
+                
+                // Just notify that player disconnected but don't remove them
+                io.to(`game-${gameId}`).emit('player-disconnected', {
+                    playerName,
+                    message: `${playerName} ist disconnected, aber kann wieder beitreten`
+                });
+                return;
+            }
+
             // Find the leaving player
             const leavingPlayer = gameStateBefore.players.find(p => p.player_name === playerName);
             if (!leavingPlayer) {
@@ -686,9 +698,13 @@ module.exports = (io) => {
             console.log(`📊 Remaining players: ${removeResult.remainingPlayerCount}`);
 
             if (removeResult.remainingPlayerCount === 0) {
-                // Delete the game
-                await db.games.deleteGame(gameId);
-                console.log(`🗑️ Game ${gameId} deleted - no players remaining`);
+                // Only delete games that are in lobby or race_selection phase
+                if (gameStateBefore.game.status === 'lobby' || gameStateBefore.game.status === 'race_selection') {
+                    await db.games.deleteGame(gameId);
+                    console.log(`🗑️ Game ${gameId} deleted - no players remaining`);
+                } else {
+                    console.log(`🎮 Game ${gameId} kept alive despite no players (status: ${gameStateBefore.game.status})`);
+                }
                 return;
             }
 

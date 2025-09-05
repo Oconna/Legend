@@ -288,6 +288,23 @@ class GameController {
             // Find current player
             const currentPlayer = this.players.find(p => p.player_name === this.playerName);
             if (!currentPlayer) {
+                console.warn('Current player not found in game, attempting to rejoin...');
+                
+                // ✅ NEW: Try to rejoin the game automatically
+                try {
+                    const rejoinResponse = await Utils.post(`/api/games/${this.gameId}/join`, {
+                        playerName: this.playerName
+                    });
+                    
+                    if (rejoinResponse.isRejoin) {
+                        console.log('✅ Successfully rejoined game, reloading data...');
+                        // Retry loading game data
+                        return this.loadGameData();
+                    }
+                } catch (rejoinError) {
+                    console.error('Failed to rejoin game:', rejoinError);
+                }
+                
                 throw new Error('Du bist nicht in diesem Spiel');
             }
             

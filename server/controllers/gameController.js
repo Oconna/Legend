@@ -104,8 +104,9 @@ router.post('/:gameId/join', async (req, res) => {
             return res.status(404).json({ error: 'Game not found' });
         }
 
-        if (game.status !== 'lobby') {
-            return res.status(400).json({ error: 'Game is not in lobby state' });
+        // ✅ IMPROVED: Allow join for playing games (rejoin scenario)
+        if (game.status !== 'lobby' && game.status !== 'playing' && game.status !== 'race_selection') {
+            return res.status(400).json({ error: 'Game is not in a joinable state' });
         }
 
         // Get current players
@@ -116,17 +117,22 @@ router.post('/:gameId/join', async (req, res) => {
         
         if (existingPlayer) {
             // Player already exists in game - this is a rejoin attempt
-            console.log(`Player ${playerName} rejoining game ${gameId}`);
+            console.log(`Player ${playerName} rejoining game ${gameId} (status: ${game.status})`);
             
-            // Allow rejoin - just return success
+            // Allow rejoin for any game phase
             return res.json({ 
                 message: 'Rejoined game successfully',
-                redirectUrl: `/lobby/${gameId}?player=${encodeURIComponent(playerName)}`,
-                isRejoin: true
+                redirectUrl: getRedirectUrlForGameStatus(game.status, gameId),
+                isRejoin: true,
+                gameStatus: game.status
             });
         }
 
-        // New player joining - check capacity
+        // New player joining - only allow for lobby phase
+        if (game.status !== 'lobby') {
+            return res.status(400).json({ error: 'Cannot join game in progress' });
+        }
+
         if (currentPlayers.length >= game.max_players) {
             return res.status(400).json({ error: 'Game is full' });
         }
@@ -157,6 +163,20 @@ router.post('/:gameId/join', async (req, res) => {
         res.status(500).json({ error: 'Failed to join game' });
     }
 });
+
+// ✅ NEW: Helper function to get correct redirect URL based on game status
+function getRedirectUrlForGameStatus(gameStatus, gameId) {
+    switch (gameStatus) {
+        case 'lobby':
+            return `/lobby/${gameId}`;
+        case 'race_selection':
+            return `/race-selection/${gameId}`;
+        case 'playing':
+            return `/game/${gameId}`;
+        default:
+            return `/lobby/${gameId}`;
+    }
+}
 
 // ✅ NEUE ENDPOINT: CHECK PLAYER MEMBERSHIP
 router.get('/:gameId/players/:playerName/status', async (req, res) => {
