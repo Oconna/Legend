@@ -8,6 +8,7 @@ class GameLobby {
         this.isReady = false;
         this.isHost = false;
         this.isLeaving = false; // ✅ Flag to track intentional leaving
+        this.isNavigating = false; // ✅ NEW: Track intentional navigation
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 3;
         
@@ -34,7 +35,7 @@ class GameLobby {
         this.socket.on('disconnect', (reason) => {
             console.log('Socket disconnected:', reason);
             
-            if (!this.isLeaving && reason !== 'io client disconnect') {
+            if (!this.isLeaving && !this.isNavigating && reason !== 'io client disconnect') {
                 this.showReconnectingOverlay();
                 this.attemptReconnection();
             }
@@ -47,7 +48,7 @@ class GameLobby {
             this.reconnectAttempts = 0;
             
             // Rejoin the game room after reconnection
-            if (this.gameId && this.playerName && !this.isLeaving) {
+            if (this.gameId && this.playerName && !this.isLeaving && !this.isNavigating) {
                 this.joinGameRoom();
                 this.loadGameData();
             }
@@ -65,9 +66,9 @@ class GameLobby {
     }
 
     attemptReconnection() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts && !this.isLeaving) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts && !this.isLeaving && !this.isNavigating) {
             setTimeout(() => {
-                if (!this.socket.connected && !this.isLeaving) {
+                if (!this.socket.connected && !this.isLeaving && !this.isNavigating) {
                     this.socket.connect();
                 }
             }, 2000 * (this.reconnectAttempts + 1)); // Progressive delay
@@ -160,25 +161,27 @@ class GameLobby {
         }
 
         // ✅ VERBESSERTE PAGE UNLOAD BEHANDLUNG
-window.addEventListener('beforeunload', (e) => {
-    // Don't treat game start redirection as leaving
-    if (this.gameStarting) {
-        return; // Allow navigation without triggering leave
-    }
-    
-    // Only handle actual page closes/refreshes, not programmatic navigation
-    if (!this.isLeaving) {
-        this.isLeaving = true;
-        this.socket.emit('leave-game', {
-            gameId: this.gameId,
-            playerName: this.playerName
+        window.addEventListener('beforeunload', (e) => {
+            // Don't treat game start redirection as leaving
+            if (this.isNavigating) {
+                console.log('Intentional navigation, not emitting leave-game');
+                return; // Allow navigation without triggering leave
+            }
+            
+            // Only handle actual page closes/refreshes, not programmatic navigation
+            if (!this.isLeaving && !this.isNavigating) {
+                console.log('Page unload detected, emitting leave-game');
+                this.isLeaving = true;
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            }
         });
-    }
-});
 
         // ✅ NEUE VISIBILITY CHANGE BEHANDLUNG
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && !this.isLeaving) {
+            if (!document.hidden && !this.isLeaving && !this.isNavigating) {
                 // Page became visible again - check if still in game
                 this.verifyGameMembership();
             }
@@ -316,27 +319,26 @@ window.addEventListener('beforeunload', (e) => {
         }
     }
 
-handleGameStarted(data) {
-    console.log('Game started, transitioning to race selection...', data);
-    
-    // Set flag to prevent leave event during transition
-    this.gameStarting = true;
-    this.isLeaving = false; // Ensure this is false
-    
-    this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
-    
-    // Clear any existing intervals
-    if (this.reconnectTimer) {
-        clearInterval(this.reconnectTimer);
+    handleGameStarted(data) {
+        console.log('Game started, transitioning to race selection...', data);
+        
+        // ✅ IMPORTANT: Set navigation flags to prevent leave event
+        this.isNavigating = true;
+        this.isLeaving = false;
+        
+        this.showLoadingOverlay('Spiel wird gestartet...', 'Weiterleitung zur Rassenauswahl...');
+        
+        // Clear any existing intervals
+        if (this.reconnectTimer) {
+            clearInterval(this.reconnectTimer);
+        }
+        
+        setTimeout(() => {
+            const redirectUrl = `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}&transition=start`;
+            console.log('Redirecting to:', redirectUrl);
+            window.location.href = redirectUrl;
+        }, 1000); // Reduced delay
     }
-    
-    // ✅ IMPORTANT: Don't emit leave-game during legitimate transition
-    setTimeout(() => {
-        const redirectUrl = `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}&transition=start`;
-        console.log('Redirecting to:', redirectUrl);
-        window.location.href = redirectUrl;
-    }, 1000); // Reduced delay
-}
 
     handlePlayerLeft(data) {
         if (data.wasHost && data.newHost) {
@@ -506,53 +508,53 @@ handleGameStarted(data) {
         }
     }
 
-startGame() {
-    console.log('🎮 START GAME CLICKED - Beginning checks...');
-    console.log('🎮 Is Host:', this.isHost);
-    console.log('🎮 Game Data:', this.gameData);
-    console.log('🎮 Socket Connected:', this.socket.connected);
-    
-    if (!this.isHost) {
-        console.log('❌ Not host - aborting');
-        Utils.showError('Nur der Host kann das Spiel starten');
-        return;
-    }
-
-    if (!this.socket.connected) {
-        console.log('❌ Socket not connected - aborting');
-        Utils.showError('Keine Verbindung zum Server');
-        return;
-    }
-
-    const startBtn = document.getElementById('start-game');
-    if (startBtn) {
-        startBtn.disabled = true;
-        startBtn.textContent = '🚀 Starte Spiel...';
-    }
-
-    console.log('🎮 Emitting start-game event with data:', {
-        gameId: this.gameId,
-        playerName: this.playerName
-    });
-
-    // Emit mit Acknowledgment für besseres Debugging
-    this.socket.emit('start-game', {
-        gameId: this.gameId,
-        playerName: this.playerName
-    }, (acknowledgment) => {
-        console.log('🎮 Start-game acknowledgment received:', acknowledgment);
-    });
-    
-    // Timeout falls nichts passiert
-    setTimeout(() => {
-        console.log('⏰ Start game timeout - no response after 10 seconds');
-        if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.textContent = '🚀 Spiel starten';
+    startGame() {
+        console.log('🎮 START GAME CLICKED - Beginning checks...');
+        console.log('🎮 Is Host:', this.isHost);
+        console.log('🎮 Game Data:', this.gameData);
+        console.log('🎮 Socket Connected:', this.socket.connected);
+        
+        if (!this.isHost) {
+            console.log('❌ Not host - aborting');
+            Utils.showError('Nur der Host kann das Spiel starten');
+            return;
         }
-        Utils.showError('Timeout beim Starten des Spiels. Versuche es erneut.');
-    }, 10000);
-}
+
+        if (!this.socket.connected) {
+            console.log('❌ Socket not connected - aborting');
+            Utils.showError('Keine Verbindung zum Server');
+            return;
+        }
+
+        const startBtn = document.getElementById('start-game');
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.textContent = '🚀 Starte Spiel...';
+        }
+
+        console.log('🎮 Emitting start-game event with data:', {
+            gameId: this.gameId,
+            playerName: this.playerName
+        });
+
+        // Emit mit Acknowledgment für besseres Debugging
+        this.socket.emit('start-game', {
+            gameId: this.gameId,
+            playerName: this.playerName
+        }, (acknowledgment) => {
+            console.log('🎮 Start-game acknowledgment received:', acknowledgment);
+        });
+        
+        // Timeout falls nichts passiert
+        setTimeout(() => {
+            console.log('⏰ Start game timeout - no response after 10 seconds');
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.textContent = '🚀 Spiel starten';
+            }
+            Utils.showError('Timeout beim Starten des Spiels. Versuche es erneut.');
+        }, 10000);
+    }
 
     showLeaveConfirmation() {
         Utils.showModal('leave-modal');
@@ -659,6 +661,7 @@ startGame() {
         console.log('Is Host:', this.isHost);
         console.log('Is Ready:', this.isReady);
         console.log('Is Leaving:', this.isLeaving);
+        console.log('Is Navigating:', this.isNavigating);
         console.log('Socket Connected:', this.socket.connected);
         console.log('Game Data:', this.gameData);
         console.log('========================');

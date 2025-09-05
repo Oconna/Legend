@@ -599,8 +599,12 @@ module.exports = (io) => {
                 }
             }
             
-            // Only handle as leave if it's not a client-side disconnect (page refresh)
-            if (socket.gameId && socket.playerName && reason !== 'client namespace disconnect') {
+            // ✅ IMPORTANT: Don't treat page navigation as leaving
+            // Only handle as leave if it's not a client-side disconnect (page refresh/navigation)
+            if (socket.gameId && socket.playerName && 
+                reason !== 'client namespace disconnect' && 
+                reason !== 'transport close') {
+                
                 // Use setTimeout to allow for reconnection attempts
                 setTimeout(async () => {
                     try {
@@ -612,7 +616,7 @@ module.exports = (io) => {
                             });
                         
                         if (!hasReconnected) {
-                            console.log(`Player ${socket.playerName} did not reconnect, handling as disconnect`);
+                            console.log(`Player ${socket.playerName} did not reconnect after ${reason}, handling as disconnect`);
                             await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
                         } else {
                             console.log(`Player ${socket.playerName} successfully reconnected`);
@@ -620,7 +624,9 @@ module.exports = (io) => {
                     } catch (error) {
                         console.error('Error handling disconnect cleanup:', error);
                     }
-                }, 15000); // 15 seconds grace period for reconnection
+                }, 30000); // 30 seconds grace period for page transitions
+            } else {
+                console.log(`Not treating ${reason} as game leave for ${socket.playerName}`);
             }
         });
     });

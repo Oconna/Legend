@@ -132,6 +132,33 @@ class GameController {
                 this.refreshGameState();
             }
         });
+        
+        // ✅ IMPROVED: Prevent accidental leave events during navigation
+        window.addEventListener('beforeunload', (e) => {
+            // Don't emit leave-game if this is intentional navigation
+            if (this.isNavigating) {
+                return;
+            }
+            
+            // Only emit leave-game for actual page closes/refreshes
+            if (!this.isNavigating) {
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            }
+        });
+        
+        // ✅ NEW: Track when we're about to navigate away intentionally
+        window.addEventListener('unload', () => {
+            if (!this.isNavigating) {
+                console.log('Page unload from game (unload event), emitting leave-game');
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            }
+        });
     }
 
     setupSocketHandlers() {

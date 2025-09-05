@@ -212,6 +212,22 @@ class RaceSelection {
 
             sendChat.addEventListener('click', () => this.sendChatMessage());
         }
+        
+        // ✅ NEW: Handle navigation events
+        window.addEventListener('beforeunload', (e) => {
+            if (this.isNavigating) {
+                console.log('Intentional navigation from race selection, not emitting leave-game');
+                return; // Allow navigation without triggering leave
+            }
+            
+            if (!this.isNavigating) {
+                console.log('Page unload from race selection, emitting leave-game');
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            }
+        });
     }
 
     joinGameRoom() {
@@ -558,6 +574,8 @@ class RaceSelection {
         }
 
         if (confirm('Möchtest du wirklich zur Lobby zurückkehren? Deine Rassenauswahl geht verloren.')) {
+            // ✅ IMPORTANT: Mark as intentional navigation
+            this.isNavigating = true;
             window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
         }
     }
