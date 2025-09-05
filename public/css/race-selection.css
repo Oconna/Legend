@@ -1,4 +1,4 @@
-/* Race Selection page specific styles */
+/* Race Selection page specific styles - FIXED VERSION */
 
 .game-info {
     text-align: center;
@@ -353,7 +353,7 @@
     margin-right: 0.2rem;
 }
 
-/* Loading overlay for map generation - HIDDEN FOR NOW */
+/* ✅ FIXED: Map Generation Loading Overlay */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -361,32 +361,39 @@
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.9);
-    display: none; /* ✅ Standardmäßig versteckt */
+    display: none; /* ✅ Hidden by default */
     align-items: center;
     justify-content: center;
     z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
+/* ✅ CRITICAL: Show class to make overlay visible */
 .loading-overlay.show {
-    display: flex; /* ✅ Nur mit .show Klasse sichtbar */
+    display: flex;
+    opacity: 1;
 }
 
 .loading-content {
     text-align: center;
     color: white;
-    max-width: 400px;
+    max-width: 500px;
+    padding: 2rem;
+}
+
+.loading-content h2 {
+    margin-bottom: 1rem;
+    font-size: 2rem;
+    color: #4CAF50;
 }
 
 .spinner.large {
     width: 80px;
     height: 80px;
     border-width: 6px;
+    border-color: #4CAF50 transparent #4CAF50 transparent;
     margin: 0 auto 2rem;
-}
-
-.loading-overlay h2 {
-    margin-bottom: 1rem;
-    font-size: 2rem;
 }
 
 .loading-progress {
@@ -396,11 +403,24 @@
 .loading-progress .progress-bar {
     height: 12px;
     margin-bottom: 1rem;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.loading-progress .progress-fill {
+    background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+    animation: loadingProgress 3s ease-in-out infinite;
 }
 
 .loading-progress .progress-text {
     color: rgba(255, 255, 255, 0.8);
     font-size: 1rem;
+}
+
+/* ✅ NEW: Loading progress animation */
+@keyframes loadingProgress {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
 }
 
 /* Chat specific styles for race selection */
@@ -415,8 +435,100 @@
 
 /* Animation for pulse effect */
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%, 100% { 
+        opacity: 1; 
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
+}
+
+/* ✅ NEW: Fade in animation for race cards */
+.race-card {
+    animation: fadeInUp 0.5s ease forwards;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.race-card:nth-child(1) { animation-delay: 0.1s; }
+.race-card:nth-child(2) { animation-delay: 0.2s; }
+.race-card:nth-child(3) { animation-delay: 0.3s; }
+.race-card:nth-child(4) { animation-delay: 0.4s; }
+.race-card:nth-child(5) { animation-delay: 0.5s; }
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ✅ NEW: Loading state for race grid */
+.races-grid .loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 3rem;
+    color: #666;
+}
+
+.races-grid .loading .spinner {
+    margin: 0 auto 1rem;
+}
+
+/* ✅ NEW: Better waiting confirmation styling */
+.waiting-confirmation {
+    animation: slideInFromBottom 0.5s ease;
+}
+
+@keyframes slideInFromBottom {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ✅ NEW: Enhanced selection display */
+.selected-race-display {
+    animation: slideInFromTop 0.5s ease;
+    box-shadow: 0 8px 32px rgba(76, 175, 80, 0.3);
+}
+
+@keyframes slideInFromTop {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ✅ NEW: Better button states */
+.selection-actions .btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.selection-actions .btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.selection-actions .btn:hover::before {
+    left: 100%;
 }
 
 /* Responsive design */
@@ -462,6 +574,15 @@
         grid-template-columns: 1fr;
         max-height: 400px;
     }
+    
+    .loading-content {
+        padding: 1rem;
+        max-width: 90%;
+    }
+    
+    .loading-content h2 {
+        font-size: 1.5rem;
+    }
 }
 
 @media (max-width: 600px) {
@@ -481,5 +602,93 @@
         margin: 1rem;
         max-width: calc(100% - 2rem);
         max-height: calc(100% - 2rem);
+    }
+    
+    .game-title {
+        font-size: 1.5rem;
+    }
+    
+    .selection-status {
+        font-size: 1rem;
+        padding: 0.4rem 0.8rem;
+    }
+}
+
+/* ✅ NEW: Enhanced loading spinner */
+.spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #4CAF50;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ✅ NEW: Success state styling */
+.confirmation-complete {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    text-align: center;
+    animation: successPulse 1s ease;
+}
+
+@keyframes successPulse {
+    0% { transform: scale(0.95); opacity: 0; }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* ✅ NEW: Error state styling */
+.error-state {
+    background: #ffebee;
+    border: 1px solid #f44336;
+    border-radius: 8px;
+    padding: 1rem;
+    color: #c62828;
+    text-align: center;
+    margin: 1rem 0;
+}
+
+.error-state .error-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+/* ✅ NEW: Enhanced modal styling */
+.modal.show {
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-content.large {
+    animation: modalSlideDown 0.3s ease;
+}
+
+@keyframes modalSlideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
     }
 }

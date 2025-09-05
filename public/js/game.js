@@ -1,14 +1,16 @@
-// Main Game Controller
+// Main Game Controller - COMPLETE FIXED VERSION
 class GameController {
     constructor() {
-        this.socket = io();
+        this.socket = io({
+            closeOnBeforeunload: false // ✅ CRITICAL: Prevent automatic disconnect
+        });
         this.gameId = Utils.getGameId();
         
         // ✅ FIX: Try multiple methods to get player name
         this.playerName = this.getPlayerName();
         
         this.gameData = null;
-        this.players = [];
+        this.players = []; // ✅ CRITICAL: Initialize as empty array to prevent undefined errors
         this.currentPlayerId = null;
         this.currentTurn = 1;
         this.currentPlayerTurn = null;
@@ -23,6 +25,10 @@ class GameController {
         // UI state
         this.selectedAction = null;
         this.selectedBuilding = null;
+        
+        // ✅ NEW: Navigation tracking
+        this.isNavigating = false;
+        this.isGameLoaded = false;
         
         this.init();
     }
@@ -50,13 +56,19 @@ class GameController {
         // ✅ IMPROVED: Better validation
         if (!this.gameId) {
             Utils.showError('Keine Spiel-ID gefunden');
-            setTimeout(() => window.location.href = '/', 2000);
+            setTimeout(() => {
+                this.isNavigating = true;
+                window.location.href = '/';
+            }, 2000);
             return;
         }
 
         if (!this.playerName) {
             Utils.showError('Kein Spielername gefunden');
-            setTimeout(() => window.location.href = `/lobby/${this.gameId}`, 2000);
+            setTimeout(() => {
+                this.isNavigating = true;
+                window.location.href = `/lobby/${this.gameId}`;
+            }, 2000);
             return;
         }
 
@@ -70,21 +82,43 @@ class GameController {
             this.bindEvents();
             this.setupSocketHandlers();
             
-            // Load game data
-            await this.loadGameData();
-            
-            // Join game room
-            this.joinGameRoom();
-            
-            console.log('✅ Game initialized successfully');
+            // ✅ WAIT FOR SOCKET CONNECTION
+            if (this.socket.connected) {
+                await this.startLoadSequence();
+            } else {
+                this.socket.on('connect', async () => {
+                    console.log('✅ Socket connected, starting load sequence');
+                    await this.startLoadSequence();
+                });
+            }
             
         } catch (error) {
             console.error('❌ Error initializing game:', error);
             Utils.showError('Fehler beim Laden des Spiels: ' + error.message);
             
             setTimeout(() => {
+                this.isNavigating = true;
                 window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
             }, 3000);
+        }
+    }
+
+    async startLoadSequence() {
+        try {
+            // Step 1: Load game data and verify access
+            console.log('📝 Step 1: Loading game data...');
+            await this.loadGameData();
+            
+            // Step 2: Join game room
+            console.log('🏠 Step 2: Joining game room...');
+            this.joinGameRoom();
+            
+            console.log('✅ Game initialized successfully');
+            this.isGameLoaded = true;
+            
+        } catch (error) {
+            console.error('❌ Error in game load sequence:', error);
+            throw error;
         }
     }
 
@@ -128,51 +162,58 @@ class GameController {
 
         // Page visibility change
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
+            if (!document.hidden && this.isGameLoaded) {
                 this.refreshGameState();
             }
         });
         
-        // ✅ IMPROVED: Prevent accidental leave events during navigation
-        window.addEventListener('beforeunload', (e) => {
-            // Don't emit leave-game if this is intentional navigation
-            if (this.isNavigating) {
-                return;
-            }
+        // ✅ IMPROVED: Better beforeunload handling
+        this.beforeUnloadHandler = (e) => {
+            console.log('🚨 beforeunload event triggered in game', {
+                isNavigating: this.isNavigating,
+                isGameLoaded: this.isGameLoaded
+            });
             
-            // Only emit leave-game for actual page closes/refreshes
-            if (!this.isNavigating) {
+            // Only emit leave-game if not intentionally navigating
+            if (!this.isNavigating && this.isGameLoaded) {
+                console.log('🚨 Emitting leave-game due to page unload');
                 this.socket.emit('leave-game', {
                     gameId: this.gameId,
                     playerName: this.playerName
                 });
+            } else {
+                console.log('✅ Allowing navigation - intentional or game not loaded');
             }
-        });
+        };
         
-        // ✅ NEW: Track when we're about to navigate away intentionally
-        window.addEventListener('unload', () => {
-            if (!this.isNavigating) {
-                console.log('Page unload from game (unload event), emitting leave-game');
+        window.addEventListener('beforeunload', this.beforeUnloadHandler);
+        
+        // ✅ NEW: Additional cleanup on page hide
+        this.visibilityChangeHandler = () => {
+            if (document.visibilityState === 'hidden' && !this.isNavigating && this.isGameLoaded) {
+                console.log('🚨 Page hidden - emitting leave-game');
                 this.socket.emit('leave-game', {
                     gameId: this.gameId,
                     playerName: this.playerName
                 });
             }
-        });
+        };
+        
+        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
     }
 
     setupSocketHandlers() {
         // Connection events
         this.socket.on('connect', () => {
             console.log('🔌 Socket connected');
-            if (this.gameId && this.playerName) {
+            if (this.gameId && this.playerName && this.isGameLoaded) {
                 this.joinGameRoom();
             }
         });
 
         this.socket.on('disconnect', (reason) => {
             console.log('🔌 Socket disconnected:', reason);
-            if (reason !== 'io client disconnect') {
+            if (reason !== 'io client disconnect' && !this.isNavigating) {
                 Utils.showError('Verbindung zum Server verloren');
             }
         });
@@ -221,15 +262,28 @@ class GameController {
             }
 
             if (gameData.game.status !== 'playing') {
-                Utils.showError(`Spiel ist in Phase: ${gameData.game.status}`);
-                setTimeout(() => {
+                console.warn(`Game status is ${gameData.game.status}, redirecting to appropriate page`);
+                
+                if (gameData.game.status === 'race_selection') {
+                    this.isNavigating = true;
                     window.location.href = `/race-selection/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-                }, 2000);
+                } else if (gameData.game.status === 'lobby') {
+                    this.isNavigating = true;
+                    window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+                } else {
+                    throw new Error(`Unbekannter Spielstatus: ${gameData.game.status}`);
+                }
                 return;
             }
 
             this.gameData = gameData.game;
-            this.players = gameData.players;
+            this.players = gameData.players || []; // ✅ CRITICAL: Ensure players is always an array
+            
+            // ✅ CRITICAL: Validate players array before accessing
+            if (!Array.isArray(this.players)) {
+                console.error('Players data is not an array:', this.players);
+                this.players = [];
+            }
             
             // Find current player
             const currentPlayer = this.players.find(p => p.player_name === this.playerName);
@@ -242,6 +296,13 @@ class GameController {
             this.playerTier = currentPlayer.tier_level || 1;
             this.currentTurn = this.gameData.current_turn || 1;
             this.currentPlayerTurn = this.gameData.current_player_turn;
+
+            console.log('✅ Game data loaded:', {
+                gameStatus: this.gameData.status,
+                playerCount: this.players.length,
+                currentPlayerId: this.currentPlayerId,
+                playerGold: this.playerGold
+            });
 
             // Load map data
             await this.loadMapData();
@@ -372,7 +433,7 @@ class GameController {
 
     updatePlayersList() {
         const playersList = document.getElementById('players-list');
-        if (!playersList) return;
+        if (!playersList || !Array.isArray(this.players)) return;
 
         Utils.clearElement(playersList);
 
@@ -734,7 +795,7 @@ class GameController {
         }
 
         try {
-            const response = await this.socket.emitWithAck('upgrade-tier', {
+            const response = await this.emitWithAck('upgrade-tier', {
                 gameId: this.gameId,
                 playerName: this.playerName,
                 newTier: nextTier
@@ -1078,14 +1139,29 @@ class GameController {
     }
 
     getCurrentTurnPlayer() {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
         return this.players.find(p => p.id === this.currentPlayerTurn);
     }
 
     getPlayer(playerId) {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
         return this.players.find(p => p.id === playerId);
     }
 
     getPlayerByName(playerName) {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
         return this.players.find(p => p.player_name === playerName);
     }
 
@@ -1158,6 +1234,27 @@ class GameController {
         });
     }
 
+    // ✅ NEW: Cleanup method
+    cleanup() {
+        if (this.beforeUnloadHandler) {
+            window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+        }
+        if (this.visibilityChangeHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+        }
+        
+        if (this.map) this.map.destroy?.();
+        if (this.units) this.units.destroy?.();
+        if (this.chat) this.chat.destroy?.();
+        
+        this.socket?.disconnect();
+        
+        // Remove global reference
+        if (window.gameController === this) {
+            delete window.gameController;
+        }
+    }
+
     // Development/Debug Methods
     debugStatus() {
         console.log('=== GAME DEBUG STATUS ===');
@@ -1175,21 +1272,9 @@ class GameController {
         console.log('Players:', this.players);
         console.log('Units Count:', this.units?.units?.length || 0);
         console.log('Map Loaded:', !!this.map?.mapData);
+        console.log('Is Game Loaded:', this.isGameLoaded);
+        console.log('Is Navigating:', this.isNavigating);
         console.log('========================');
-    }
-
-    // Cleanup
-    destroy() {
-        if (this.map) this.map.destroy?.();
-        if (this.units) this.units.destroy?.();
-        if (this.chat) this.chat.destroy?.();
-        
-        this.socket?.disconnect();
-        
-        // Remove global reference
-        if (window.gameController === this) {
-            delete window.gameController;
-        }
     }
 }
 
@@ -1204,10 +1289,10 @@ document.addEventListener('DOMContentLoaded', () => {
         window.debugGame = () => gameController.debugStatus();
         console.log('🐛 Debug function available: debugGame()');
         
-        // Cleanup on page unload
+        // ✅ NEW: Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (gameController) {
-                gameController.destroy();
+                gameController.cleanup();
             }
         });
         

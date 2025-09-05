@@ -210,13 +210,15 @@ module.exports = (io) => {
                 // Check if all players have confirmed their races
                 const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
                 if (allConfirmed) {
-                    // ✅ AKTIVIERTE UND VERBESSERTE KARTENGENERIERUNG
-                    console.log('🗺️ Starting map generation...');
+                    // ✅ VERBESSERTE KARTENGENERIERUNG
+                    console.log('🗺️ All players confirmed races, starting map generation...');
                     io.to(`game-${gameId}`).emit('map-generation-start');
                     
                     try {
                         // Parse map size
                         const [width, height] = gameState.game.map_size.split('x').map(Number);
+                        
+                        console.log(`🗺️ Starting map generation: ${width}x${height} for ${gameState.players.length} players`);
                         
                         // Generate map
                         await generateMap(gameId, width, height, gameState.players);
@@ -234,15 +236,21 @@ module.exports = (io) => {
                         // Update game status to playing
                         await db.games.updateStatus(gameId, 'playing');
                         
-                        console.log('🗺️ Map generation completed!');
+                        console.log('🗺️ Map generation completed successfully!');
+                        
+                        // ✅ IMPORTANT: Wait a moment for database updates to complete
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // Send completion event
                         io.to(`game-${gameId}`).emit('map-generation-complete', {
-                            redirectUrl: `/game/${gameId}`
+                            redirectUrl: `/game/${gameId}`,
+                            gameStatus: 'playing'
                         });
                         
                     } catch (error) {
                         console.error('❌ Map generation failed:', error);
                         io.to(`game-${gameId}`).emit('map-generation-failed', {
-                            error: 'Kartengenerierung fehlgeschlagen'
+                            error: 'Kartengenerierung fehlgeschlagen: ' + error.message
                         });
                     }
                 }
@@ -270,10 +278,12 @@ module.exports = (io) => {
             }
         });
 
-        // Leave game
+        // ✅ IMPROVED LEAVE-GAME HANDLING
         socket.on('leave-game', async (data) => {
             try {
                 const { gameId, playerName } = data;
+                console.log(`🚪 LEAVE-GAME EVENT: ${playerName} leaving game ${gameId}`);
+                
                 await handlePlayerLeave(gameId, playerName, io, false);
                 socket.leave(`game-${gameId}`);
                 
@@ -587,7 +597,7 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ VERBESSERTE DISCONNECT BEHANDLUNG
+        // ✅ IMPROVED DISCONNECT HANDLING
         socket.on('disconnect', (reason) => {
             console.log('User disconnected:', socket.id, 'Reason:', reason);
             
@@ -599,34 +609,44 @@ module.exports = (io) => {
                 }
             }
             
-            // ✅ IMPORTANT: Don't treat page navigation as leaving
-            // Only handle as leave if it's not a client-side disconnect (page refresh/navigation)
-            if (socket.gameId && socket.playerName && 
-                reason !== 'client namespace disconnect' && 
-                reason !== 'transport close') {
+            // ✅ CRITICAL: Better disconnect handling for navigation vs actual disconnection
+            if (socket.gameId && socket.playerName) {
+                const isIntentionalNavigation = 
+                    reason === 'client namespace disconnect' || 
+                    reason === 'transport close';
                 
-                // Use setTimeout to allow for reconnection attempts
-                setTimeout(async () => {
-                    try {
-                        // Check if player has reconnected
-                        const hasReconnected = activeConnections.has(socket.gameId) && 
-                            Array.from(activeConnections.get(socket.gameId)).some(socketId => {
-                                const connectedSocket = io.sockets.sockets.get(socketId);
-                                return connectedSocket && connectedSocket.playerName === socket.playerName;
-                            });
-                        
-                        if (!hasReconnected) {
-                            console.log(`Player ${socket.playerName} did not reconnect after ${reason}, handling as disconnect`);
-                            await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
-                        } else {
-                            console.log(`Player ${socket.playerName} successfully reconnected`);
+                if (isIntentionalNavigation) {
+                    console.log(`📝 Intentional navigation detected for ${socket.playerName}, allowing grace period`);
+                    
+                    // Use setTimeout to allow for reconnection attempts during page navigation
+                    setTimeout(async () => {
+                        try {
+                            // Check if player has reconnected
+                            const hasReconnected = activeConnections.has(socket.gameId) && 
+                                Array.from(activeConnections.get(socket.gameId)).some(socketId => {
+                                    const connectedSocket = io.sockets.sockets.get(socketId);
+                                    return connectedSocket && connectedSocket.playerName === socket.playerName;
+                                });
+                            
+                            if (!hasReconnected) {
+                                console.log(`❌ Player ${socket.playerName} did not reconnect after grace period, treating as disconnect`);
+                                await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
+                            } else {
+                                console.log(`✅ Player ${socket.playerName} successfully reconnected during grace period`);
+                            }
+                        } catch (error) {
+                            console.error('Error handling disconnect cleanup:', error);
                         }
-                    } catch (error) {
-                        console.error('Error handling disconnect cleanup:', error);
-                    }
-                }, 30000); // 30 seconds grace period for page transitions
+                    }, 10000); // 10 seconds grace period for navigation
+                } else {
+                    // Immediate disconnect for non-navigation reasons
+                    console.log(`💨 Immediate disconnect for ${socket.playerName} due to: ${reason}`);
+                    setTimeout(async () => {
+                        await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
+                    }, 2000); // Short delay to avoid race conditions
+                }
             } else {
-                console.log(`Not treating ${reason} as game leave for ${socket.playerName}`);
+                console.log(`ℹ️ Not treating ${reason} as game leave (no game/player info)`);
             }
         });
     });
@@ -636,39 +656,39 @@ module.exports = (io) => {
     // Verbesserte handlePlayerLeave Funktion
     async function handlePlayerLeave(gameId, playerName, io, isDisconnect = false) {
         try {
-            console.log(`Handling player leave: ${playerName} from game ${gameId} (disconnect: ${isDisconnect})`);
+            console.log(`🚪 Handling player leave: ${playerName} from game ${gameId} (disconnect: ${isDisconnect})`);
 
             // Get current game state BEFORE removing player
             const gameStateBefore = await getGameState(gameId);
             if (!gameStateBefore || !gameStateBefore.players) {
-                console.log('Game not found or no players');
+                console.log('⚠️ Game not found or no players');
                 return;
             }
 
             // Find the leaving player
             const leavingPlayer = gameStateBefore.players.find(p => p.player_name === playerName);
             if (!leavingPlayer) {
-                console.log('Player not found in game');
+                console.log('⚠️ Player not found in game');
                 return;
             }
 
             const wasHost = leavingPlayer.is_host;
-            console.log(`Player ${playerName} was host: ${wasHost}`);
+            console.log(`📝 Player ${playerName} was host: ${wasHost}`);
 
             // Use the improved database function for safe removal
             const removeResult = await db.players.removeWithHostTransfer(gameId, playerName);
             
             if (!removeResult.success) {
-                console.error('Failed to remove player:', removeResult.error);
+                console.error('❌ Failed to remove player:', removeResult.error);
                 return;
             }
 
-            console.log(`Remaining players: ${removeResult.remainingPlayerCount}`);
+            console.log(`📊 Remaining players: ${removeResult.remainingPlayerCount}`);
 
             if (removeResult.remainingPlayerCount === 0) {
                 // Delete the game
                 await db.games.deleteGame(gameId);
-                console.log(`Game ${gameId} deleted - no players remaining`);
+                console.log(`🗑️ Game ${gameId} deleted - no players remaining`);
                 return;
             }
 
@@ -676,7 +696,7 @@ module.exports = (io) => {
             const gameStateAfter = await getGameState(gameId);
             
             if (removeResult.hostTransfer) {
-                console.log(`Host transferred to: ${removeResult.hostTransfer.newHostName}`);
+                console.log(`👑 Host transferred to: ${removeResult.hostTransfer.newHostName}`);
                 
                 // Notify all remaining players
                 io.to(`game-${gameId}`).emit('player-left', { 
@@ -702,7 +722,7 @@ module.exports = (io) => {
             }
 
         } catch (error) {
-            console.error('Error in handlePlayerLeave:', error);
+            console.error('❌ Error in handlePlayerLeave:', error);
             throw error;
         }
     }
@@ -759,10 +779,10 @@ module.exports = (io) => {
             // Update player gold
             await db.query('UPDATE game_players SET gold = gold + ? WHERE id = ?', [income, playerId]);
             
-            console.log(`Player ${playerId} received ${income} gold income`);
+            console.log(`💰 Player ${playerId} received ${income} gold income`);
             
         } catch (error) {
-            console.error('Error giving player income:', error);
+            console.error('❌ Error giving player income:', error);
         }
     }
 
