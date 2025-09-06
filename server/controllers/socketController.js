@@ -100,7 +100,7 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ VERBESSERTE JOIN-GAME BEHANDLUNG
+        // ✅ CRITICAL FIX: Improved JOIN-GAME handling for different game phases
         socket.on('join-game', async (data) => {
             console.log('🏠 JOIN-GAME EVENT RECEIVED:', data);
             const { gameId, playerName } = data;
@@ -113,18 +113,19 @@ module.exports = (io) => {
                     return;
                 }
 
+                console.log(`🎯 JOIN-GAME: ${playerName} joining game ${gameId} (status: ${gameState.game.status})`);
+
                 // Prüfen ob Spieler bereits im Spiel ist (wichtig für Seitenwechsel)
                 const existingPlayer = gameState.players.find(p => p.player_name === playerName);
                 
                 if (!existingPlayer) {
                     // Spieler ist nicht im Spiel - das ist ein Problem
-                    console.warn(`Player ${playerName} trying to join room for game ${gameId} but not in player list`);
+                    console.warn(`❌ Player ${playerName} trying to join room for game ${gameId} but not in player list`);
                     socket.emit('error', { message: 'You are not a member of this game' });
                     return;
                 }
 
-                // ✅ WICHTIG: Bei allen Spiel-Phasen beitreten erlauben
-                console.log(`Player ${playerName} joining game ${gameId} in phase: ${gameState.game.status}`);
+                console.log(`✅ Player ${playerName} is a valid member of game ${gameId}`);
 
                 // Socket zu Spiel-Room hinzufügen
                 socket.join(`game-${gameId}`);
@@ -137,24 +138,37 @@ module.exports = (io) => {
                 }
                 activeConnections.get(gameId).add(socket.id);
 
-                console.log(`Player ${playerName} joined room for game ${gameId} (${gameState.game.status})`);
+                console.log(`✅ Player ${playerName} successfully joined room for game ${gameId}`);
 
-                // Aktuellen Game State an alle Spieler senden
-                const updatedGameState = await getGameState(gameId);
-                io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
-
-                // ✅ SPEZIELLE BEHANDLUNG FÜR RACE SELECTION PHASE
-                if (gameState.game.status === 'race_selection') {
-                    // Bestätigungsstand senden
+                // ✅ IMPORTANT: Different handling based on game phase
+                if (gameState.game.status === 'playing') {
+                    // For playing games, just send the current state without any special setup
+                    console.log('🎮 Player joining active game - sending current state');
+                    const updatedGameState = await getGameState(gameId);
+                    socket.emit('game-state-update', updatedGameState);
+                    
+                } else if (gameState.game.status === 'race_selection') {
+                    // For race selection, send confirmation updates
+                    console.log('🛡️ Player joining race selection - sending confirmation status');
                     const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
                     socket.emit('race-confirmation-update', {
                         confirmedCount,
                         totalPlayers: gameState.players.length
                     });
+                    
+                    // Also send game state update
+                    const updatedGameState = await getGameState(gameId);
+                    socket.emit('game-state-update', updatedGameState);
+                    
+                } else if (gameState.game.status === 'lobby') {
+                    // For lobby, send the current lobby state
+                    console.log('🏠 Player joining lobby - sending lobby state');
+                    const updatedGameState = await getGameState(gameId);
+                    io.to(`game-${gameId}`).emit('game-state-update', updatedGameState);
                 }
 
             } catch (error) {
-                console.error('Error in join-game:', error);
+                console.error('❌ Error in join-game:', error);
                 socket.emit('error', { message: 'Failed to join game room' });
             }
         });
@@ -194,23 +208,30 @@ module.exports = (io) => {
             }
         });
 
-        // Confirm race selection
+        // ✅ CRITICAL: Improved race confirmation handling
         socket.on('confirm-race', async (data) => {
             try {
                 const { gameId, playerName } = data;
+                console.log(`🛡️ CONFIRM-RACE: ${playerName} confirming race for game ${gameId}`);
+                
                 await db.players.confirmRace(gameId, playerName);
                 
                 const gameState = await getGameState(gameId);
+                const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
+                const totalPlayers = gameState.players.length;
+                
+                console.log(`🛡️ Race confirmation: ${confirmedCount}/${totalPlayers} players confirmed`);
+                
                 io.to(`game-${gameId}`).emit('race-confirmation-update', {
                     playerName,
-                    confirmedCount: gameState.players.filter(p => p.race_confirmed).length,
-                    totalPlayers: gameState.players.length
+                    confirmedCount,
+                    totalPlayers
                 });
 
                 // Check if all players have confirmed their races
                 const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
+                
                 if (allConfirmed) {
-                    // ✅ VERBESSERTE KARTENGENERIERUNG
                     console.log('🗺️ All players confirmed races, starting map generation...');
                     io.to(`game-${gameId}`).emit('map-generation-start');
                     
@@ -241,9 +262,12 @@ module.exports = (io) => {
                         // ✅ IMPORTANT: Wait a moment for database updates to complete
                         await new Promise(resolve => setTimeout(resolve, 500));
                         
-                        // Send completion event
+                        // Send completion event with proper player parameter handling
+                        const redirectUrl = `/game/${gameId}`;
+                        
+                        console.log('🚀 Sending map-generation-complete event with redirect:', redirectUrl);
                         io.to(`game-${gameId}`).emit('map-generation-complete', {
-                            redirectUrl: `/game/${gameId}`,
+                            redirectUrl: redirectUrl,
                             gameStatus: 'playing'
                         });
                         
@@ -278,13 +302,21 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ IMPROVED LEAVE-GAME HANDLING
+        // ✅ IMPROVED LEAVE-GAME HANDLING - Only for lobby phase
         socket.on('leave-game', async (data) => {
             try {
                 const { gameId, playerName } = data;
                 console.log(`🚪 LEAVE-GAME EVENT: ${playerName} leaving game ${gameId}`);
                 
-                await handlePlayerLeave(gameId, playerName, io, false);
+                // ✅ CRITICAL: Only process leave events for lobby games
+                const gameState = await getGameState(gameId);
+                if (gameState && gameState.game && gameState.game.status === 'lobby') {
+                    console.log('🏠 Processing leave for lobby game');
+                    await handlePlayerLeave(gameId, playerName, io, false);
+                } else {
+                    console.log(`⚠️ Ignoring leave event for game in ${gameState?.game?.status || 'unknown'} phase`);
+                }
+                
                 socket.leave(`game-${gameId}`);
                 
                 // Remove from active connections
@@ -597,7 +629,7 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ IMPROVED DISCONNECT HANDLING
+        // ✅ CRITICAL FIX: Better disconnect handling for different game phases
         socket.on('disconnect', (reason) => {
             console.log('User disconnected:', socket.id, 'Reason:', reason);
             
@@ -609,18 +641,16 @@ module.exports = (io) => {
                 }
             }
             
-            // ✅ CRITICAL: Better disconnect handling for navigation vs actual disconnection
+            // ✅ CRITICAL: Only handle disconnects for lobby games
             if (socket.gameId && socket.playerName) {
-                const isIntentionalNavigation = 
-                    reason === 'client namespace disconnect' || 
-                    reason === 'transport close';
-                
-                if (isIntentionalNavigation) {
-                    console.log(`📝 Intentional navigation detected for ${socket.playerName}, allowing grace period`);
-                    
-                    // Use setTimeout to allow for reconnection attempts during page navigation
-                    setTimeout(async () => {
-                        try {
+                // Set timeout to check if this is a real disconnect or just navigation
+                setTimeout(async () => {
+                    try {
+                        // Check game status
+                        const gameState = await getGameState(socket.gameId);
+                        
+                        // Only process disconnect for lobby games
+                        if (gameState && gameState.game && gameState.game.status === 'lobby') {
                             // Check if player has reconnected
                             const hasReconnected = activeConnections.has(socket.gameId) && 
                                 Array.from(activeConnections.get(socket.gameId)).some(socketId => {
@@ -629,31 +659,23 @@ module.exports = (io) => {
                                 });
                             
                             if (!hasReconnected) {
-                                console.log(`❌ Player ${socket.playerName} did not reconnect after grace period, treating as disconnect`);
+                                console.log(`🚪 Processing disconnect for lobby player: ${socket.playerName}`);
                                 await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
                             } else {
-                                console.log(`✅ Player ${socket.playerName} successfully reconnected during grace period`);
+                                console.log(`✅ Player ${socket.playerName} reconnected during grace period`);
                             }
-                        } catch (error) {
-                            console.error('Error handling disconnect cleanup:', error);
+                        } else {
+                            console.log(`ℹ️ Ignoring disconnect for game in ${gameState?.game?.status || 'unknown'} phase`);
                         }
-                    }, 10000); // 10 seconds grace period for navigation
-                } else {
-                    // Immediate disconnect for non-navigation reasons
-                    console.log(`💨 Immediate disconnect for ${socket.playerName} due to: ${reason}`);
-                    setTimeout(async () => {
-                        await handlePlayerLeave(socket.gameId, socket.playerName, io, true);
-                    }, 2000); // Short delay to avoid race conditions
-                }
-            } else {
-                console.log(`ℹ️ Not treating ${reason} as game leave (no game/player info)`);
+                    } catch (error) {
+                        console.error('Error handling disconnect cleanup:', error);
+                    }
+                }, 5000); // 5 second grace period
             }
         });
     });
 
-    // ✅ VERBESSERTE HELPER FUNCTIONS
-
-    // Verbesserte handlePlayerLeave Funktion
+    // ✅ UPDATED: Only remove players from lobby games
     async function handlePlayerLeave(gameId, playerName, io, isDisconnect = false) {
         try {
             console.log(`🚪 Handling player leave: ${playerName} from game ${gameId} (disconnect: ${isDisconnect})`);
@@ -665,21 +687,9 @@ module.exports = (io) => {
                 return;
             }
 
-            // ✅ CRITICAL: Don't remove players during race_selection or playing phases
-            if (gameStateBefore.game.status === 'playing' || gameStateBefore.game.status === 'race_selection') {
-                console.log(`🎮 Game ${gameId} is in ${gameStateBefore.game.status} phase, not removing players during disconnect`);
-                
-                // Just notify that player disconnected but don't remove them
-                io.to(`game-${gameId}`).emit('player-disconnected', {
-                    playerName,
-                    message: `${playerName} ist disconnected, aber kann wieder beitreten`
-                });
-                return;
-            }
-
-            // Only remove players from lobby phase games
+            // ✅ CRITICAL: Only process player removal for lobby games
             if (gameStateBefore.game.status !== 'lobby') {
-                console.log(`⚠️ Unexpected game status for player removal: ${gameStateBefore.game.status}`);
+                console.log(`⚠️ Not removing player from game in ${gameStateBefore.game.status} phase`);
                 return;
             }
 

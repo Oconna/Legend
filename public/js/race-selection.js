@@ -1,4 +1,4 @@
-// Race Selection page functionality - FIXED VERSION
+// Race Selection page functionality - COMPLETE FIXED VERSION
 class RaceSelection {
     constructor() {
         this.socket = io({
@@ -621,42 +621,69 @@ class RaceSelection {
         }
     }
 
-    // ✅ IMPROVED: Better map generation complete handling
+    // ✅ CRITICAL FIX: Better map generation complete handling
     handleMapGenerationComplete(data) {
-        console.log('🗺️ Map generation complete, redirecting to game...', data);
+        console.log('🗺️ Map generation complete, preparing navigation to game...', data);
         
+        // ✅ CRITICAL: Set flags to prevent any interference
         this.isMapGenerating = false;
-        this.isNavigating = true; // ✅ CRITICAL: Mark as intentional navigation
+        this.isNavigating = true; 
         
-        // ✅ CRITICAL: Disconnect socket cleanly to prevent leave events
-        console.log('🔌 Disconnecting socket cleanly before navigation...');
-        this.socket.removeAllListeners();
-        this.socket.disconnect();
+        console.log('🔌 Cleaning up for navigation...');
         
-        // ✅ CRITICAL: Remove all event listeners
+        // ✅ CRITICAL: Remove all event listeners immediately
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+            this.beforeUnloadHandler = null;
         }
         if (this.visibilityChangeHandler) {
             document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+            this.visibilityChangeHandler = null;
         }
         
-        // ✅ CRITICAL: Clear any existing timers
+        // ✅ CRITICAL: Disconnect socket cleanly
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        
+        // Clear any existing timers
         if (this.navigationTimeout) {
             clearTimeout(this.navigationTimeout);
         }
         
+        console.log('✅ Navigation preparation complete');
+        
+        // Update UI
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            const loadingText = document.getElementById('loading-text');
+            if (loadingText) {
+                loadingText.textContent = 'Weiterleitung zum Spiel...';
+            }
+            
+            const progressText = document.getElementById('progress-text');
+            if (progressText) {
+                progressText.textContent = 'Das Spiel wird geladen...';
+            }
+        }
+        
         Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
         
-        // ✅ ENSURE PLAYER PARAMETER IN REDIRECT
-        const redirectUrl = data.redirectUrl.includes('?') 
-            ? `${data.redirectUrl}&player=${encodeURIComponent(this.playerName)}`
-            : `${data.redirectUrl}?player=${encodeURIComponent(this.playerName)}`;
-            
-        console.log('🚀 Navigating to game with clean transition:', redirectUrl);
+        // ✅ CRITICAL: Ensure player parameter is included in navigation
+        let redirectUrl = data.redirectUrl;
         
-        // ✅ CRITICAL: Immediate navigation to prevent any timing issues
-        window.location.href = redirectUrl;
+        // Add player parameter if not already present
+        if (redirectUrl && this.playerName) {
+            const separator = redirectUrl.includes('?') ? '&' : '?';
+            redirectUrl = `${redirectUrl}${separator}player=${encodeURIComponent(this.playerName)}`;
+        }
+        
+        console.log('🚀 Final redirect URL:', redirectUrl);
+        
+        // ✅ CRITICAL: Navigate immediately to prevent any race conditions
+        setTimeout(() => {
+            console.log('🎮 Navigating to game page...');
+            window.location.href = redirectUrl;
+        }, 1000); // Small delay for user feedback
     }
 
     backToLobby() {
@@ -728,6 +755,8 @@ class RaceSelection {
 
     // ✅ NEW: Cleanup method
     cleanup() {
+        this.isNavigating = true; // Prevent any further leave events
+        
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
         }

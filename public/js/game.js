@@ -254,7 +254,10 @@ class GameController {
 
     async loadGameData() {
         try {
-            // Load game info
+            // ✅ CRITICAL FIX: Don't use join API for existing players - just load game data directly
+            console.log('📝 Loading game data directly (player should already be in game)...');
+            
+            // Load game info directly without trying to join
             const gameData = await Utils.get(`/api/games/${this.gameId}`);
             
             if (!gameData || !gameData.game) {
@@ -288,24 +291,13 @@ class GameController {
             // Find current player
             const currentPlayer = this.players.find(p => p.player_name === this.playerName);
             if (!currentPlayer) {
-                console.warn('Current player not found in game, attempting to rejoin...');
+                console.error('❌ Current player not found in game players list');
+                console.log('Available players:', this.players.map(p => p.player_name));
+                console.log('Looking for player:', this.playerName);
                 
-                // ✅ NEW: Try to rejoin the game automatically
-                try {
-                    const rejoinResponse = await Utils.post(`/api/games/${this.gameId}/join`, {
-                        playerName: this.playerName
-                    });
-                    
-                    if (rejoinResponse.isRejoin) {
-                        console.log('✅ Successfully rejoined game, reloading data...');
-                        // Retry loading game data
-                        return this.loadGameData();
-                    }
-                } catch (rejoinError) {
-                    console.error('Failed to rejoin game:', rejoinError);
-                }
-                
-                throw new Error('Du bist nicht in diesem Spiel');
+                // ✅ CRITICAL: This means the player was navigated here but isn't actually in the game
+                // This should not happen with proper navigation, but let's handle it gracefully
+                throw new Error('Du bist nicht in diesem Spiel. Kehre zur Lobby zurück.');
             }
             
             this.currentPlayerId = currentPlayer.id;
@@ -314,11 +306,12 @@ class GameController {
             this.currentTurn = this.gameData.current_turn || 1;
             this.currentPlayerTurn = this.gameData.current_player_turn;
 
-            console.log('✅ Game data loaded:', {
+            console.log('✅ Game data loaded successfully:', {
                 gameStatus: this.gameData.status,
                 playerCount: this.players.length,
                 currentPlayerId: this.currentPlayerId,
-                playerGold: this.playerGold
+                playerGold: this.playerGold,
+                currentPlayer: currentPlayer.player_name
             });
 
             // Load map data
