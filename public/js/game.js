@@ -34,23 +34,53 @@ class GameController {
     }
 
     // ✅ IMPROVED: Multiple methods to get player name
-    getPlayerName() {
-        // 1. Try URL parameter
-        let playerName = Utils.getUrlParameter('player');
-        
-        // 2. Try localStorage
-        if (!playerName) {
-            playerName = Utils.getFromStorage('playerName');
-        }
-        
-        // 3. Try to prompt user if both fail
-        if (!playerName) {
-            console.warn('No player name found, redirecting to lobby');
-            // We'll handle this in init()
-        }
-        
-        return playerName;
+getPlayerName() {
+    // 1. Try URL parameter
+    let playerName = Utils.getUrlParameter('player');
+    console.log('🔍 Player name from URL:', playerName);
+    
+    // 2. Try localStorage
+    if (!playerName) {
+        playerName = Utils.getFromStorage('playerName');
+        console.log('🔍 Player name from storage:', playerName);
     }
+    
+    // 3. Try sessionStorage
+    if (!playerName) {
+        try {
+            playerName = sessionStorage.getItem('playerName');
+            console.log('🔍 Player name from session:', playerName);
+        } catch (e) {
+            console.log('Session storage not available');
+        }
+    }
+    
+    // 4. Last resort - extract from current page path (for race selection redirects)
+    if (!playerName) {
+        const urlParams = new URLSearchParams(window.location.search);
+        playerName = urlParams.get('player') || urlParams.get('playerName');
+        console.log('🔍 Player name from search params:', playerName);
+    }
+    
+    if (!playerName) {
+        console.error('❌ No player name found anywhere!');
+        Utils.showError('Spielername nicht gefunden. Kehre zur Startseite zurück.');
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 2000);
+        return null;
+    }
+    
+    // Decode URL encoding if present
+    try {
+        playerName = decodeURIComponent(playerName);
+    } catch (e) {
+        console.log('Player name was not URL encoded');
+    }
+    
+    console.log('✅ Final player name:', playerName);
+    return playerName;
+}
 
     async init() {
         // ✅ IMPROVED: Better validation
@@ -253,92 +283,179 @@ class GameController {
     }
 
     // ✅ CRITICAL FIX: Completely rewritten loadGameData method
-    async loadGameData() {
-        try {
-            console.log('📝 Loading game data for game:', this.gameId);
-            
-            // ✅ STEP 1: Load basic game info
-            const gameData = await Utils.get(`/api/games/${this.gameId}`);
-            
-            if (!gameData || !gameData.game) {
-                throw new Error('Spiel nicht gefunden');
-            }
+async loadGameData() {
+    try {
+        console.log('📝 Starting loadGameData...');
+        console.log('📝 Game ID:', this.gameId);
+        console.log('📝 Player Name:', this.playerName);
+        
+        if (!this.gameId) {
+            throw new Error('Keine Spiel-ID gefunden');
+        }
+        
+        if (!this.playerName) {
+            throw new Error('Kein Spielername gefunden');
+        }
+        
+        // ✅ STEP 1: Load basic game info with detailed logging
+        console.log('📝 Step 1: Loading game data from API...');
+        const gameData = await Utils.get(`/api/games/${this.gameId}`);
+        
+        console.log('📝 Raw API response:', gameData);
+        
+        if (!gameData) {
+            throw new Error('Keine Antwort vom Server erhalten');
+        }
+        
+        if (!gameData.game) {
+            console.error('❌ Game object missing in response:', gameData);
+            throw new Error('Spieldaten unvollständig - game Objekt fehlt');
+        }
+        
+        if (!gameData.players) {
+            console.error('❌ Players array missing in response:', gameData);
+            throw new Error('Spieldaten unvollständig - players Array fehlt');
+        }
 
-            console.log('✅ Game basic data loaded:', gameData.game);
+        console.log('✅ Game basic data loaded:', gameData.game);
+        console.log('✅ Players data loaded:', gameData.players);
 
-            // ✅ STEP 2: Validate game status
-            if (gameData.game.status !== 'playing') {
-                console.warn(`Game status is ${gameData.game.status}, redirecting to appropriate page`);
-                
-                if (gameData.game.status === 'race_selection') {
-                    this.isNavigating = true;
-                    window.location.href = `/race-selection/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-                } else if (gameData.game.status === 'lobby') {
-                    this.isNavigating = true;
-                    window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
-                } else {
-                    throw new Error(`Unbekannter Spielstatus: ${gameData.game.status}`);
-                }
-                return;
+        // ✅ STEP 2: Validate game status
+        console.log('📝 Step 2: Validating game status...');
+        if (gameData.game.status !== 'playing') {
+            console.warn(`Game status is ${gameData.game.status}, redirecting to appropriate page`);
+            
+            if (gameData.game.status === 'race_selection') {
+                this.isNavigating = true;
+                window.location.href = `/race-selection/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            } else if (gameData.game.status === 'lobby') {
+                this.isNavigating = true;
+                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            } else {
+                throw new Error(`Unbekannter Spielstatus: ${gameData.game.status}`);
             }
+            return;
+        }
 
-            // ✅ STEP 3: Validate player access
-            this.gameData = gameData.game;
-            this.players = gameData.players || [];
+        // ✅ STEP 3: Enhanced player validation with debugging
+        console.log('📝 Step 3: Validating player access...');
+        this.gameData = gameData.game;
+        this.players = gameData.players || [];
+        
+        if (!Array.isArray(this.players)) {
+            console.error('❌ Players data is not an array:', this.players);
+            throw new Error('Spielerdaten sind fehlerhaft');
+        }
+        
+        console.log('🔍 Available players in game:');
+        this.players.forEach((player, index) => {
+            console.log(`  ${index}: "${player.player_name}" (ID: ${player.id})`);
+        });
+        
+        console.log('🔍 Looking for player:', `"${this.playerName}"`);
+        console.log('🔍 Player name length:', this.playerName.length);
+        console.log('🔍 Player name character codes:', [...this.playerName].map(c => c.charCodeAt(0)));
+        
+        // ✅ ENHANCED: More flexible player matching
+        let currentPlayer = this.players.find(p => p.player_name === this.playerName);
+        
+        // If exact match fails, try trimmed comparison
+        if (!currentPlayer) {
+            console.log('🔍 Exact match failed, trying trimmed comparison...');
+            currentPlayer = this.players.find(p => 
+                p.player_name.trim() === this.playerName.trim()
+            );
+        }
+        
+        // If still no match, try case-insensitive comparison
+        if (!currentPlayer) {
+            console.log('🔍 Trimmed match failed, trying case-insensitive comparison...');
+            currentPlayer = this.players.find(p => 
+                p.player_name.toLowerCase().trim() === this.playerName.toLowerCase().trim()
+            );
+        }
+        
+        // If still no match, show detailed error
+        if (!currentPlayer) {
+            console.error('❌ Current player not found in game players list');
+            console.error('❌ Available players:', this.players.map(p => `"${p.player_name}"`));
+            console.error('❌ Looking for player:', `"${this.playerName}"`);
             
-            if (!Array.isArray(this.players)) {
-                console.error('Players data is not an array:', this.players);
-                this.players = [];
-            }
+            // Try to find similar player names
+            const similarPlayers = this.players.filter(p => 
+                p.player_name.toLowerCase().includes(this.playerName.toLowerCase()) ||
+                this.playerName.toLowerCase().includes(p.player_name.toLowerCase())
+            );
             
-            const currentPlayer = this.players.find(p => p.player_name === this.playerName);
-            if (!currentPlayer) {
-                console.error('❌ Current player not found in game players list');
-                console.log('Available players:', this.players.map(p => p.player_name));
-                console.log('Looking for player:', this.playerName);
-                
+            if (similarPlayers.length > 0) {
+                console.error('❌ Similar players found:', similarPlayers.map(p => p.player_name));
+                throw new Error(`Spieler nicht gefunden. Ähnliche Spieler: ${similarPlayers.map(p => p.player_name).join(', ')}`);
+            } else {
                 throw new Error('Du bist nicht in diesem Spiel. Kehre zur Lobby zurück.');
             }
-            
-            // ✅ STEP 4: Set player data
-            this.currentPlayerId = currentPlayer.id;
-            this.playerGold = currentPlayer.gold || 0;
-            this.playerTier = currentPlayer.tier_level || 1;
-            this.currentTurn = this.gameData.current_turn || 1;
-            this.currentPlayerTurn = this.gameData.current_player_turn;
-
-            console.log('✅ Game data loaded successfully:', {
-                gameStatus: this.gameData.status,
-                playerCount: this.players.length,
-                currentPlayerId: this.currentPlayerId,
-                playerGold: this.playerGold,
-                currentPlayer: currentPlayer.player_name
-            });
-
-            // ✅ STEP 5: Load map data
-            console.log('🗺️ Loading map data...');
-            await this.loadMapData();
-            
-            // ✅ STEP 6: Load units
-            console.log('🔍 Loading units data...');
-            await this.loadUnitsData();
-            
-            // ✅ STEP 7: Load available units for purchase
-            if (currentPlayer.race_id) {
-                console.log('🛒 Loading available units for race:', currentPlayer.race_id);
-                await this.units.loadAvailableUnits(currentPlayer.race_id);
-            }
-
-            // ✅ STEP 8: Update UI
-            console.log('🎨 Updating game UI...');
-            this.updateGameUI();
-            
-            console.log('✅ All game data loaded successfully');
-            
-        } catch (error) {
-            console.error('❌ Error loading game data:', error);
-            throw error;
         }
+        
+        console.log('✅ Current player found:', currentPlayer);
+        
+        // ✅ STEP 4: Set player data
+        console.log('📝 Step 4: Setting player data...');
+        this.currentPlayerId = currentPlayer.id;
+        this.playerGold = currentPlayer.gold || 0;
+        this.playerTier = currentPlayer.tier_level || 1;
+        this.currentTurn = this.gameData.current_turn || 1;
+        this.currentPlayerTurn = this.gameData.current_player_turn;
+
+        console.log('✅ Player data set:', {
+            currentPlayerId: this.currentPlayerId,
+            playerGold: this.playerGold,
+            playerTier: this.playerTier,
+            currentTurn: this.currentTurn,
+            currentPlayerTurn: this.currentPlayerTurn
+        });
+
+        console.log('✅ Game data loaded successfully:', {
+            gameStatus: this.gameData.status,
+            playerCount: this.players.length,
+            currentPlayerId: this.currentPlayerId,
+            playerGold: this.playerGold,
+            currentPlayer: currentPlayer.player_name
+        });
+
+        // ✅ STEP 5: Load map data
+        console.log('📝 Step 5: Loading map data...');
+        await this.loadMapData();
+        
+        // ✅ STEP 6: Load units
+        console.log('📝 Step 6: Loading units data...');
+        await this.loadUnitsData();
+        
+        // ✅ STEP 7: Load available units for purchase
+        if (currentPlayer.race_id) {
+            console.log('📝 Step 7: Loading available units for race:', currentPlayer.race_id);
+            await this.units.loadAvailableUnits(currentPlayer.race_id);
+        }
+
+        // ✅ STEP 8: Update UI
+        console.log('📝 Step 8: Updating game UI...');
+        this.updateGameUI();
+        
+        console.log('✅ All game data loaded successfully');
+        
+    } catch (error) {
+        console.error('❌ Error loading game data:', error);
+        console.error('❌ Error stack:', error.stack);
+        
+        // Show user-friendly error message
+        if (error.message.includes('nicht in diesem Spiel')) {
+            Utils.showError('Du bist nicht mehr in diesem Spiel. Weiterleitung zur Startseite...');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+        } else {
+            Utils.showError('Fehler beim Laden der Spieldaten: ' + error.message);
+        }
+        
+        throw error;
     }
 
     // ✅ CRITICAL FIX: Improved map loading with better error handling
