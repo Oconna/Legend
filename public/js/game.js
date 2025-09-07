@@ -34,51 +34,112 @@ class GameController {
     }
 
     // ✅ IMPROVED: Multiple methods to get player name
+// ✅ KORRIGIERTE getPlayerName Methode für GameController
 getPlayerName() {
-    // 1. Try URL parameter
-    let playerName = Utils.getUrlParameter('player');
-    console.log('🔍 Player name from URL:', playerName);
+    console.log('🔍 Starting player name detection...');
+    console.log('🔍 Current URL:', window.location.href);
+    console.log('🔍 Search params:', window.location.search);
     
-    // 2. Try localStorage
+    let playerName = null;
+    
+    // 1. Try URL parameter 'player'
+    const urlParams = new URLSearchParams(window.location.search);
+    playerName = urlParams.get('player');
+    console.log('🔍 Player name from URL param "player":', playerName);
+    
+    // 2. Try URL parameter 'playerName' (alternative)
     if (!playerName) {
-        playerName = Utils.getFromStorage('playerName');
-        console.log('🔍 Player name from storage:', playerName);
+        playerName = urlParams.get('playerName');
+        console.log('🔍 Player name from URL param "playerName":', playerName);
     }
     
-    // 3. Try sessionStorage
+    // 3. Try Utils method (falls back to localStorage)
+    if (!playerName) {
+        playerName = Utils.getUrlParameter('player');
+        console.log('🔍 Player name from Utils.getUrlParameter:', playerName);
+    }
+    
+    // 4. Try localStorage directly
+    if (!playerName) {
+        playerName = Utils.getFromStorage('playerName');
+        console.log('🔍 Player name from localStorage:', playerName);
+    }
+    
+    // 5. Try sessionStorage
     if (!playerName) {
         try {
             playerName = sessionStorage.getItem('playerName');
-            console.log('🔍 Player name from session:', playerName);
+            console.log('🔍 Player name from sessionStorage:', playerName);
         } catch (e) {
-            console.log('Session storage not available');
+            console.log('🔍 SessionStorage not available');
         }
     }
     
-    // 4. Last resort - extract from current page path (for race selection redirects)
+    // 6. Emergency fallback - look for it in all possible URL variations
     if (!playerName) {
-        const urlParams = new URLSearchParams(window.location.search);
-        playerName = urlParams.get('player') || urlParams.get('playerName');
-        console.log('🔍 Player name from search params:', playerName);
+        // Check if URL contains player info in path or fragment
+        const href = window.location.href;
+        const pathMatch = href.match(/[?&]player=([^&]+)/i);
+        if (pathMatch) {
+            playerName = decodeURIComponent(pathMatch[1]);
+            console.log('🔍 Player name from URL regex match:', playerName);
+        }
     }
     
+    // If still not found, show detailed error
     if (!playerName) {
-        console.error('❌ No player name found anywhere!');
-        Utils.showError('Spielername nicht gefunden. Kehre zur Startseite zurück.');
+        console.error('❌ CRITICAL: No player name found anywhere!');
+        console.error('❌ URL:', window.location.href);
+        console.error('❌ Search params:', window.location.search);
+        console.error('❌ Available URL params:', Array.from(urlParams.entries()));
+        
+        // Show user-friendly error and redirect
+        Utils.showError('Spielername nicht gefunden. Du wirst zur Lobby weitergeleitet...');
         setTimeout(() => {
-            window.location.href = '/';
-        }, 2000);
+            // Try to get gameId and redirect to lobby with option to enter name
+            const gameId = Utils.getGameId();
+            if (gameId) {
+                window.location.href = `/lobby/${gameId}`;
+            } else {
+                window.location.href = '/';
+            }
+        }, 3000);
+        
         return null;
     }
     
     // Decode URL encoding if present
     try {
-        playerName = decodeURIComponent(playerName);
+        const decodedPlayerName = decodeURIComponent(playerName);
+        console.log('🔍 Decoded player name:', decodedPlayerName);
+        playerName = decodedPlayerName;
     } catch (e) {
-        console.log('Player name was not URL encoded');
+        console.log('🔍 Player name was not URL encoded, using as is');
     }
     
-    console.log('✅ Final player name:', playerName);
+    // Trim whitespace
+    playerName = playerName.trim();
+    
+    // Final validation
+    if (playerName.length === 0) {
+        console.error('❌ Player name is empty after trimming');
+        Utils.showError('Spielername ist leer. Du wirst zur Lobby weitergeleitet...');
+        setTimeout(() => {
+            const gameId = Utils.getGameId();
+            if (gameId) {
+                window.location.href = `/lobby/${gameId}`;
+            } else {
+                window.location.href = '/';
+            }
+        }, 3000);
+        return null;
+    }
+    
+    console.log('✅ Final player name found:', playerName);
+    
+    // Save to localStorage for future use
+    Utils.savePlayerName(playerName);
+    
     return playerName;
 }
 
