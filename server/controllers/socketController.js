@@ -3,6 +3,7 @@ const db = require('../database');
 module.exports = (io) => {
     // ✅ TRACKING AKTIVER VERBINDUNGEN
     const activeConnections = new Map(); // gameId -> Set of socket.ids
+    const gamePhaseTracking = new Map(); // gameId -> current phase
     
     io.on('connection', (socket) => {
         console.log('🔌 User connected:', socket.id);
@@ -32,6 +33,9 @@ module.exports = (io) => {
                     return;
                 }
                 
+                // ✅ CRITICAL: Track game phase change
+                gamePhaseTracking.set(gameId, 'transitioning_to_race_selection');
+                
                 // Verify player is host
                 console.log('🔍 Fetching players for game', gameId);
                 const players = await db.players.findByGame(gameId);
@@ -43,6 +47,7 @@ module.exports = (io) => {
                 if (!player || !player.is_host) {
                     const error = 'Only the host can start the game';
                     console.log('❌ START-GAME ERROR:', error);
+                    gamePhaseTracking.delete(gameId); // ✅ Clean up tracking
                     socket.emit('error', { message: error });
                     if (acknowledgment) acknowledgment({ success: false, error });
                     return;
@@ -56,6 +61,7 @@ module.exports = (io) => {
                 if (!allReady || playerCount < 2) {
                     const error = 'Not all players are ready or insufficient players';
                     console.log('❌ START-GAME ERROR:', error);
+                    gamePhaseTracking.delete(gameId); // ✅ Clean up tracking
                     socket.emit('error', { message: error });
                     if (acknowledgment) acknowledgment({ success: false, error });
                     return;
@@ -66,6 +72,9 @@ module.exports = (io) => {
                 // Update game status
                 console.log('📝 Updating game status to race_selection...');
                 await db.games.updateStatus(gameId, 'race_selection');
+                
+                // ✅ CRITICAL: Update phase tracking
+                gamePhaseTracking.set(gameId, 'race_selection');
                 
                 // Verify status was updated
                 const updatedGame = await db.games.findById(gameId);
@@ -94,6 +103,12 @@ module.exports = (io) => {
 
             } catch (error) {
                 console.error('❌ CRITICAL ERROR in start-game:', error);
+                
+                // ✅ CRITICAL: Clean up tracking on error
+                if (data?.gameId) {
+                    gamePhaseTracking.delete(data.gameId);
+                }
+                
                 const errorMessage = 'Failed to start game: ' + error.message;
                 socket.emit('error', { message: errorMessage });
                 if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
@@ -114,6 +129,9 @@ module.exports = (io) => {
                 }
 
                 console.log(`🎯 JOIN-GAME: ${playerName} joining game ${gameId} (status: ${gameState.game.status})`);
+
+                // ✅ CRITICAL: Update phase tracking when players join
+                gamePhaseTracking.set(gameId, gameState.game.status);
 
                 // Prüfen ob Spieler bereits im Spiel ist (wichtig für Seitenwechsel)
                 const existingPlayer = gameState.players.find(p => p.player_name === playerName);
@@ -233,6 +251,10 @@ module.exports = (io) => {
                 
                 if (allConfirmed) {
                     console.log('🗺️ All players confirmed races, starting map generation...');
+                    
+                    // ✅ CRITICAL: Update phase tracking
+                    gamePhaseTracking.set(gameId, 'map_generation');
+                    
                     io.to(`game-${gameId}`).emit('map-generation-start');
                     
                     try {
@@ -257,6 +279,9 @@ module.exports = (io) => {
                         // Update game status to playing
                         await db.games.updateStatus(gameId, 'playing');
                         
+                        // ✅ CRITICAL: Update phase tracking
+                        gamePhaseTracking.set(gameId, 'playing');
+                        
                         console.log('🗺️ Map generation completed successfully!');
                         
                         // ✅ IMPORTANT: Wait a moment for database updates to complete
@@ -273,6 +298,10 @@ module.exports = (io) => {
                         
                     } catch (error) {
                         console.error('❌ Map generation failed:', error);
+                        
+                        // ✅ CRITICAL: Reset phase tracking on error
+                        gamePhaseTracking.set(gameId, 'race_selection');
+                        
                         io.to(`game-${gameId}`).emit('map-generation-failed', {
                             error: 'Kartengenerierung fehlgeschlagen: ' + error.message
                         });
@@ -302,19 +331,29 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ IMPROVED LEAVE-GAME HANDLING - Only for lobby phase
+        // ✅ CRITICAL FIX: Sichere LEAVE-GAME Behandlung basierend auf Spielphase
         socket.on('leave-game', async (data) => {
             try {
                 const { gameId, playerName } = data;
                 console.log(`🚪 LEAVE-GAME EVENT: ${playerName} leaving game ${gameId}`);
                 
-                // ✅ CRITICAL: Only process leave events for lobby games
+                // ✅ CRITICAL: Prüfe aktuelle Spielphase
                 const gameState = await getGameState(gameId);
-                if (gameState && gameState.game && gameState.game.status === 'lobby') {
-                    console.log('🏠 Processing leave for lobby game');
+                if (!gameState || !gameState.game) {
+                    console.log('❌ Game not found for leave event');
+                    return;
+                }
+                
+                const currentPhase = gameState.game.status;
+                console.log(`🎯 Game ${gameId} is in phase: ${currentPhase}`);
+                
+                // ✅ CRITICAL: Nur in Lobby-Phase Spieler entfernen und Spiel löschen
+                if (currentPhase === 'lobby') {
+                    console.log('🏠 Processing leave for lobby game - can remove player and delete game');
                     await handlePlayerLeave(gameId, playerName, io, false);
                 } else {
-                    console.log(`⚠️ Ignoring leave event for game in ${gameState?.game?.status || 'unknown'} phase`);
+                    console.log(`⚠️ Ignoring leave event for game in ${currentPhase} phase - no deletion allowed`);
+                    // Für andere Phasen: Nur Socket-Room verlassen, aber Spieler nicht entfernen
                 }
                 
                 socket.leave(`game-${gameId}`);
@@ -629,7 +668,7 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ CRITICAL FIX: Better disconnect handling for different game phases
+        // ✅ CRITICAL FIX: Sichere Disconnect-Behandlung basierend auf Spielphase
         socket.on('disconnect', (reason) => {
             console.log('User disconnected:', socket.id, 'Reason:', reason);
             
@@ -641,16 +680,19 @@ module.exports = (io) => {
                 }
             }
             
-            // ✅ CRITICAL: Only handle disconnects for lobby games
+            // ✅ CRITICAL: Nur für Lobby-Spiele Disconnect-Handling
             if (socket.gameId && socket.playerName) {
                 // Set timeout to check if this is a real disconnect or just navigation
                 setTimeout(async () => {
                     try {
-                        // Check game status
+                        // ✅ CRITICAL: Prüfe Spielphase vor Disconnect-Behandlung
                         const gameState = await getGameState(socket.gameId);
+                        const currentPhase = gameState?.game?.status;
                         
-                        // Only process disconnect for lobby games
-                        if (gameState && gameState.game && gameState.game.status === 'lobby') {
+                        console.log(`🔍 Disconnect timeout check: Game ${socket.gameId} is in phase: ${currentPhase}`);
+                        
+                        // ✅ CRITICAL: Nur Lobby-Spiele dürfen durch Disconnect beeinflusst werden
+                        if (currentPhase === 'lobby') {
                             // Check if player has reconnected
                             const hasReconnected = activeConnections.has(socket.gameId) && 
                                 Array.from(activeConnections.get(socket.gameId)).some(socketId => {
@@ -665,7 +707,7 @@ module.exports = (io) => {
                                 console.log(`✅ Player ${socket.playerName} reconnected during grace period`);
                             }
                         } else {
-                            console.log(`ℹ️ Ignoring disconnect for game in ${gameState?.game?.status || 'unknown'} phase`);
+                            console.log(`ℹ️ Ignoring disconnect for game in ${currentPhase || 'unknown'} phase - no player removal`);
                         }
                     } catch (error) {
                         console.error('Error handling disconnect cleanup:', error);
@@ -675,7 +717,7 @@ module.exports = (io) => {
         });
     });
 
-    // ✅ UPDATED: Only remove players from lobby games
+    // ✅ CRITICAL FIX: Sichere handlePlayerLeave - nur für Lobby-Spiele
     async function handlePlayerLeave(gameId, playerName, io, isDisconnect = false) {
         try {
             console.log(`🚪 Handling player leave: ${playerName} from game ${gameId} (disconnect: ${isDisconnect})`);
@@ -687,11 +729,14 @@ module.exports = (io) => {
                 return;
             }
 
-            // ✅ CRITICAL: Only process player removal for lobby games
-            if (gameStateBefore.game.status !== 'lobby') {
-                console.log(`⚠️ Not removing player from game in ${gameStateBefore.game.status} phase`);
+            // ✅ CRITICAL: Prüfe Spielphase - nur Lobby erlaubt
+            const currentPhase = gameStateBefore.game.status;
+            if (currentPhase !== 'lobby') {
+                console.log(`🚫 BLOCKED: Cannot remove player from game in ${currentPhase} phase`);
                 return;
             }
+
+            console.log(`✅ ALLOWED: Game ${gameId} is in lobby phase - proceeding with player removal`);
 
             // Find the leaving player
             const leavingPlayer = gameStateBefore.players.find(p => p.player_name === playerName);
@@ -713,10 +758,14 @@ module.exports = (io) => {
 
             console.log(`📊 Remaining players: ${removeResult.remainingPlayerCount}`);
 
+            // ✅ CRITICAL: Nur leere Lobby-Spiele löschen
             if (removeResult.remainingPlayerCount === 0) {
-                // Only delete lobby games with no players
+                console.log(`🗑️ Deleting empty LOBBY game ${gameId}`);
                 await db.games.deleteGame(gameId);
-                console.log(`🗑️ Game ${gameId} deleted - no players remaining in lobby`);
+                
+                // ✅ CRITICAL: Clean up tracking
+                gamePhaseTracking.delete(gameId);
+                activeConnections.delete(gameId);
                 return;
             }
 

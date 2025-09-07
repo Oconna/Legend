@@ -252,18 +252,21 @@ class GameController {
         });
     }
 
+    // ✅ CRITICAL FIX: Completely rewritten loadGameData method
     async loadGameData() {
         try {
-            // ✅ CRITICAL FIX: Don't use join API for existing players - just load game data directly
-            console.log('📝 Loading game data directly (player should already be in game)...');
+            console.log('📝 Loading game data for game:', this.gameId);
             
-            // Load game info directly without trying to join
+            // ✅ STEP 1: Load basic game info
             const gameData = await Utils.get(`/api/games/${this.gameId}`);
             
             if (!gameData || !gameData.game) {
                 throw new Error('Spiel nicht gefunden');
             }
 
+            console.log('✅ Game basic data loaded:', gameData.game);
+
+            // ✅ STEP 2: Validate game status
             if (gameData.game.status !== 'playing') {
                 console.warn(`Game status is ${gameData.game.status}, redirecting to appropriate page`);
                 
@@ -279,27 +282,25 @@ class GameController {
                 return;
             }
 
+            // ✅ STEP 3: Validate player access
             this.gameData = gameData.game;
-            this.players = gameData.players || []; // ✅ CRITICAL: Ensure players is always an array
+            this.players = gameData.players || [];
             
-            // ✅ CRITICAL: Validate players array before accessing
             if (!Array.isArray(this.players)) {
                 console.error('Players data is not an array:', this.players);
                 this.players = [];
             }
             
-            // Find current player
             const currentPlayer = this.players.find(p => p.player_name === this.playerName);
             if (!currentPlayer) {
                 console.error('❌ Current player not found in game players list');
                 console.log('Available players:', this.players.map(p => p.player_name));
                 console.log('Looking for player:', this.playerName);
                 
-                // ✅ CRITICAL: This means the player was navigated here but isn't actually in the game
-                // This should not happen with proper navigation, but let's handle it gracefully
                 throw new Error('Du bist nicht in diesem Spiel. Kehre zur Lobby zurück.');
             }
             
+            // ✅ STEP 4: Set player data
             this.currentPlayerId = currentPlayer.id;
             this.playerGold = currentPlayer.gold || 0;
             this.playerTier = currentPlayer.tier_level || 1;
@@ -314,26 +315,33 @@ class GameController {
                 currentPlayer: currentPlayer.player_name
             });
 
-            // Load map data
+            // ✅ STEP 5: Load map data
+            console.log('🗺️ Loading map data...');
             await this.loadMapData();
             
-            // Load units
+            // ✅ STEP 6: Load units
+            console.log('🔍 Loading units data...');
             await this.loadUnitsData();
             
-            // Load available units for purchase
+            // ✅ STEP 7: Load available units for purchase
             if (currentPlayer.race_id) {
+                console.log('🛒 Loading available units for race:', currentPlayer.race_id);
                 await this.units.loadAvailableUnits(currentPlayer.race_id);
             }
 
-            // Update UI
+            // ✅ STEP 8: Update UI
+            console.log('🎨 Updating game UI...');
             this.updateGameUI();
             
+            console.log('✅ All game data loaded successfully');
+            
         } catch (error) {
-            console.error('Error loading game data:', error);
+            console.error('❌ Error loading game data:', error);
             throw error;
         }
     }
 
+    // ✅ CRITICAL FIX: Improved map loading with better error handling
     async loadMapData() {
         try {
             console.log(`🗺️ Loading map data for game ${this.gameId}...`);
@@ -341,74 +349,137 @@ class GameController {
             
             if (mapData && mapData.length > 0) {
                 console.log(`✅ Map data loaded: ${mapData.length} tiles`);
+                
+                // ✅ CRITICAL: Wait for map to fully load before proceeding
                 await this.map.loadMap(mapData);
-                console.log('✅ Map loaded successfully');
+                console.log('✅ Map loaded and rendered successfully');
+                
+                return mapData;
             } else {
-                console.log('⚠️ No map data found, showing placeholder');
-                this.showPlaceholderMap();
+                console.log('⚠️ No map data found - map might still be generating');
+                
+                // ✅ IMPROVED: Show placeholder instead of error
+                this.showMapPlaceholder();
+                return [];
             }
         } catch (error) {
             console.error('❌ Error loading map:', error);
-            // Show placeholder map for development
-            this.showPlaceholderMap();
+            
+            // ✅ IMPROVED: Show placeholder on error instead of failing
+            this.showMapPlaceholder();
+            Utils.showError('Karte konnte nicht geladen werden. Wird als Platzhalter angezeigt.');
+            return [];
         }
     }
 
+    // ✅ CRITICAL FIX: Improved units loading with better error handling
     async loadUnitsData() {
         try {
             console.log(`🔍 Loading units data for game ${this.gameId}...`);
             const unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
             
             console.log(`✅ Units data received:`, unitsData);
-            await this.units.loadUnits(unitsData || []);
             
-            // Update map with units
-            this.map.updateUnits(unitsData || []);
+            if (Array.isArray(unitsData)) {
+                await this.units.loadUnits(unitsData);
+                
+                // ✅ CRITICAL: Update map with units after loading
+                if (this.map && typeof this.map.updateUnits === 'function') {
+                    this.map.updateUnits(unitsData);
+                }
+                
+                console.log(`✅ Loaded ${unitsData.length} units successfully`);
+                return unitsData;
+            } else {
+                console.warn('⚠️ Units data is not an array:', unitsData);
+                await this.units.loadUnits([]);
+                return [];
+            }
             
-            console.log(`✅ Loaded ${unitsData?.length || 0} units`);
         } catch (error) {
             console.error('❌ Error loading units:', error);
-            // Don't throw error, just use empty units array
+            
+            // ✅ IMPROVED: Don't fail on units error, just use empty array
             await this.units.loadUnits([]);
-            this.map.updateUnits([]);
+            Utils.showError('Einheiten konnten nicht geladen werden.');
+            return [];
         }
     }
 
-    showPlaceholderMap() {
-        // Development placeholder until map generation is fully implemented
-        const placeholderMap = [];
-        const size = 20;
-        
-        for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-                placeholderMap.push({
-                    x_pos: x,
-                    y_pos: y,
-                    terrain_type_id: Math.floor(Math.random() * 7) + 1,
-                    building_type_id: (x === 5 && y === 5) ? 1 : null,
-                    building_owner_id: (x === 5 && y === 5) ? this.currentPlayerId : null
-                });
+    // ✅ IMPROVED: Better placeholder map for development
+    showMapPlaceholder() {
+        try {
+            console.log('🎨 Creating placeholder map...');
+            
+            const placeholderMap = [];
+            const size = 20;
+            
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    // Create more realistic terrain distribution
+                    let terrainType = 1; // Default grass
+                    
+                    if (Math.random() < 0.15) terrainType = 2; // Mountain
+                    else if (Math.random() < 0.1) terrainType = 3; // Swamp
+                    else if (Math.random() < 0.12) terrainType = 4; // Water
+                    else if (Math.random() < 0.08) terrainType = 5; // Forest
+                    
+                    // Add some buildings for testing
+                    let buildingType = null;
+                    let buildingOwner = null;
+                    
+                    if ((x === 5 && y === 5) || (x === 15 && y === 15)) {
+                        buildingType = 1; // Village
+                        buildingOwner = this.currentPlayerId;
+                    }
+                    
+                    placeholderMap.push({
+                        x_pos: x,
+                        y_pos: y,
+                        terrain_type_id: terrainType,
+                        building_type_id: buildingType,
+                        building_owner_id: buildingOwner
+                    });
+                }
             }
+            
+            // ✅ CRITICAL: Wait for map loading to complete
+            this.map.loadMap(placeholderMap, []).then(() => {
+                console.log('✅ Placeholder map loaded successfully');
+                Utils.showInfo('Development-Karte geladen (Kartengenerierung läuft im Hintergrund)');
+            }).catch(error => {
+                console.error('❌ Error loading placeholder map:', error);
+                Utils.showError('Fehler beim Laden der Platzhalter-Karte');
+            });
+            
+        } catch (error) {
+            console.error('❌ Error creating placeholder map:', error);
         }
-        
-        this.map.loadMap(placeholderMap, []);
-        Utils.showInfo('Development-Karte geladen (Kartengenerierung wird noch implementiert)');
     }
 
     joinGameRoom() {
         if (this.socket.connected) {
+            console.log('🏠 Joining game room...');
             this.socket.emit('join-game', {
                 gameId: this.gameId,
                 playerName: this.playerName
             });
+        } else {
+            console.warn('⚠️ Socket not connected, cannot join room');
         }
     }
 
     // UI Updates
     updateGameUI() {
-        this.updateGameHeader();
-        this.updatePlayersList();
-        this.updateActionButtons();
+        try {
+            console.log('🎨 Updating game UI...');
+            this.updateGameHeader();
+            this.updatePlayersList();
+            this.updateActionButtons();
+            console.log('✅ Game UI updated successfully');
+        } catch (error) {
+            console.error('❌ Error updating game UI:', error);
+        }
     }
 
     updateGameHeader() {
@@ -462,7 +533,7 @@ class GameController {
         if (isCurrentTurn) playerDiv.classList.add('current');
         if (player.eliminated) playerDiv.classList.add('eliminated');
 
-        const playerColor = this.map.getPlayerColor(player.id);
+        const playerColor = this.map ? this.map.getPlayerColor(player.id) : '#999';
         
         playerDiv.innerHTML = `
             <div class="player-avatar-small" style="background-color: ${playerColor}">
@@ -1246,23 +1317,43 @@ class GameController {
 
     // ✅ NEW: Cleanup method
     cleanup() {
+        console.log('🧹 Starting game cleanup...');
+        
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+            console.log('✅ Removed beforeunload handler');
         }
         if (this.visibilityChangeHandler) {
             document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+            console.log('✅ Removed visibility handler');
         }
         
-        if (this.map) this.map.destroy?.();
-        if (this.units) this.units.destroy?.();
-        if (this.chat) this.chat.destroy?.();
+        if (this.map && typeof this.map.destroy === 'function') {
+            this.map.destroy();
+            console.log('✅ Destroyed map');
+        }
+        if (this.units && typeof this.units.destroy === 'function') {
+            this.units.destroy();
+            console.log('✅ Destroyed units manager');
+        }
+        if (this.chat && typeof this.chat.destroy === 'function') {
+            this.chat.destroy();
+            console.log('✅ Destroyed chat');
+        }
         
-        this.socket?.disconnect();
+        if (this.socket) {
+            this.socket.removeAllListeners();
+            this.socket.disconnect();
+            console.log('✅ Disconnected socket');
+        }
         
         // Remove global reference
         if (window.gameController === this) {
             delete window.gameController;
+            console.log('✅ Removed global reference');
         }
+        
+        console.log('✅ Game cleanup completed');
     }
 
     // Development/Debug Methods

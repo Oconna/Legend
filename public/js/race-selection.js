@@ -21,6 +21,7 @@ class RaceSelection {
         this.isNavigating = false;
         this.isMapGenerating = false;
         this.navigationTimeout = null;
+        this.hasReceivedMapComplete = false; // ✅ CRITICAL: Prevent duplicate redirects
         
         this.init();
     }
@@ -182,13 +183,20 @@ class RaceSelection {
             this.showMapGenerationOverlay();
         });
 
+        // ✅ CRITICAL FIX: Prevent duplicate map-generation-complete handling
         this.socket.on('map-generation-complete', (data) => {
-            this.handleMapGenerationComplete(data);
+            if (!this.hasReceivedMapComplete) {
+                this.hasReceivedMapComplete = true;
+                this.handleMapGenerationComplete(data);
+            } else {
+                console.log('🚨 Duplicate map-generation-complete event ignored');
+            }
         });
 
         this.socket.on('map-generation-failed', (data) => {
             console.error('❌ Map generation failed:', data);
             this.isMapGenerating = false;
+            this.hasReceivedMapComplete = false; // Reset on failure
             Utils.showError('Kartengenerierung fehlgeschlagen: ' + data.error);
             this.hideMapGenerationOverlay();
         });
@@ -621,38 +629,39 @@ class RaceSelection {
         }
     }
 
-    // ✅ CRITICAL FIX: Better map generation complete handling
+    // ✅ CRITICAL FIX: Completely rewritten map generation complete handling
     handleMapGenerationComplete(data) {
-        console.log('🗺️ Map generation complete, preparing navigation to game...', data);
+        console.log('🗺️ Map generation complete event received:', data);
         
-        // ✅ CRITICAL: Set flags to prevent any interference
+        // ✅ CRITICAL: Immediate state changes to prevent race conditions
         this.isMapGenerating = false;
-        this.isNavigating = true; 
+        this.isNavigating = true;
         
-        console.log('🔌 Cleaning up for navigation...');
+        console.log('🔌 Starting immediate cleanup for navigation...');
         
-        // ✅ CRITICAL: Remove all event listeners immediately
-        if (this.beforeUnloadHandler) {
-            window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-            this.beforeUnloadHandler = null;
+        // ✅ CRITICAL: Clean up all event listeners IMMEDIATELY
+        try {
+            if (this.beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+                this.beforeUnloadHandler = null;
+                console.log('✅ Removed beforeunload listener');
+            }
+            
+            if (this.visibilityChangeHandler) {
+                document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+                this.visibilityChangeHandler = null;
+                console.log('✅ Removed visibilitychange listener');
+            }
+            
+            // ✅ CRITICAL: Remove ALL socket listeners immediately
+            this.socket.removeAllListeners();
+            console.log('✅ Removed all socket listeners');
+            
+        } catch (error) {
+            console.error('❌ Error during cleanup:', error);
         }
-        if (this.visibilityChangeHandler) {
-            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
-            this.visibilityChangeHandler = null;
-        }
         
-        // ✅ CRITICAL: Disconnect socket cleanly
-        this.socket.removeAllListeners();
-        this.socket.disconnect();
-        
-        // Clear any existing timers
-        if (this.navigationTimeout) {
-            clearTimeout(this.navigationTimeout);
-        }
-        
-        console.log('✅ Navigation preparation complete');
-        
-        // Update UI
+        // ✅ CRITICAL: Update UI to show transition
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
             const loadingText = document.getElementById('loading-text');
@@ -668,22 +677,30 @@ class RaceSelection {
         
         Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
         
-        // ✅ CRITICAL: Ensure player parameter is included in navigation
-        let redirectUrl = data.redirectUrl;
+        // ✅ CRITICAL: Prepare redirect URL with player parameter
+        let redirectUrl = data.redirectUrl || `/game/${this.gameId}`;
         
-        // Add player parameter if not already present
-        if (redirectUrl && this.playerName) {
+        // Ensure player parameter is included
+        if (this.playerName) {
             const separator = redirectUrl.includes('?') ? '&' : '?';
             redirectUrl = `${redirectUrl}${separator}player=${encodeURIComponent(this.playerName)}`;
         }
         
-        console.log('🚀 Final redirect URL:', redirectUrl);
+        console.log('🚀 Final redirect URL prepared:', redirectUrl);
         
-        // ✅ CRITICAL: Navigate immediately to prevent any race conditions
+        // ✅ CRITICAL: Use immediate navigation without delay to prevent issues
+        console.log('🎮 Executing immediate navigation...');
+        
+        // Clear any existing timeouts
+        if (this.navigationTimeout) {
+            clearTimeout(this.navigationTimeout);
+        }
+        
+        // ✅ CRITICAL: Navigate immediately with minimal delay
         setTimeout(() => {
-            console.log('🎮 Navigating to game page...');
+            console.log('🚀 NAVIGATING TO GAME NOW:', redirectUrl);
             window.location.href = redirectUrl;
-        }, 1000); // Small delay for user feedback
+        }, 500); // Minimal delay for UI feedback only
     }
 
     backToLobby() {
@@ -755,20 +772,29 @@ class RaceSelection {
 
     // ✅ NEW: Cleanup method
     cleanup() {
+        console.log('🧹 Starting race selection cleanup...');
+        
         this.isNavigating = true; // Prevent any further leave events
         
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+            console.log('✅ Removed beforeunload handler');
         }
         if (this.visibilityChangeHandler) {
             document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+            console.log('✅ Removed visibility handler');
         }
         if (this.navigationTimeout) {
             clearTimeout(this.navigationTimeout);
+            console.log('✅ Cleared navigation timeout');
         }
         if (this.socket) {
+            this.socket.removeAllListeners();
             this.socket.disconnect();
+            console.log('✅ Disconnected socket');
         }
+        
+        console.log('✅ Race selection cleanup completed');
     }
 
     debugStatus() {
@@ -779,6 +805,7 @@ class RaceSelection {
         console.log('Has Confirmed:', this.hasConfirmed);
         console.log('Is Navigating:', this.isNavigating);
         console.log('Is Map Generating:', this.isMapGenerating);
+        console.log('Has Received Map Complete:', this.hasReceivedMapComplete);
         console.log('Available Races:', this.availableRaces.length);
         console.log('Game Data:', this.gameData);
         console.log('Socket Connected:', this.socket.connected);
@@ -796,9 +823,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.debugRaceSelection = () => raceSelection.debugStatus();
     console.log('🐛 Debug function available: debugRaceSelection()');
     
-    // ✅ NEW: Cleanup on page unload
+    // ✅ CRITICAL: Cleanup on page unload
     window.addEventListener('beforeunload', () => {
-        if (raceSelection) {
+        if (raceSelection && raceSelection.cleanup) {
             raceSelection.cleanup();
         }
     });
