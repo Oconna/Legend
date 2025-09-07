@@ -236,67 +236,64 @@ socket.on('confirm-race', async (data) => {
         
         const gameState = await getGameState(gameId);
         const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
+        const totalPlayers = gameState.players.length;
         
-        console.log(`🛡️ Race confirmation: ${confirmedCount}/${gameState.players.length} players confirmed`);
+        console.log(`🛡️ Race confirmation: ${confirmedCount}/${totalPlayers} players confirmed`);
+        console.log(`🛡️ Confirmed players:`, gameState.players
+            .filter(p => p.race_confirmed)
+            .map(p => p.player_name)
+        );
         
-        // ✅ CRITICAL FIX: Sende Update an ALLE Spieler nach jeder Bestätigung
+        // ✅ CRITICAL: Send update to ALL players immediately
+        console.log(`📡 Broadcasting race-confirmation-update to all players in game ${gameId}`);
         io.to(`game-${gameId}`).emit('race-confirmation-update', {
+            playerName,
             confirmedCount,
-            totalPlayers: gameState.players.length
+            totalPlayers,
+            timestamp: new Date().toISOString()
         });
+
+        // ✅ CRITICAL: Also send updated game state to ensure synchronization
+        console.log(`📡 Broadcasting updated game-state to all players in game ${gameId}`);
+        io.to(`game-${gameId}`).emit('game-state-update', gameState);
+
+        // Check if all players have confirmed their races
+        const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
         
-        // Prüfe ob alle Spieler bestätigt haben
-        if (confirmedCount === gameState.players.length) {
+        console.log(`🔍 All confirmed check: ${allConfirmed} (${confirmedCount}/${totalPlayers})`);
+        
+        if (allConfirmed) {
             console.log('🗺️ All players confirmed races, starting map generation...');
             
-            // Send map generation start event
+            // ✅ CRITICAL: Update phase tracking
+            gamePhaseTracking.set(gameId, 'map_generation');
+            
+            // Notify all players that map generation is starting
+            console.log(`📡 Broadcasting map-generation-start to all players in game ${gameId}`);
             io.to(`game-${gameId}`).emit('map-generation-start');
             
             try {
-                const { map_width: mapWidth, map_height: mapHeight } = gameState.game;
-                console.log(`🗺️ Starting map generation: ${mapWidth}x${mapHeight} for ${gameState.players.length} players`);
+                // Parse map size
+                const [width, height] = gameState.game.map_size.split('x').map(Number);
                 
-                // Track generation attempts
-                let attempts = 0;
-                const maxAttempts = 3;
+                console.log(`🗺️ Starting map generation: ${width}x${height} for ${gameState.players.length} players`);
                 
-                while (attempts < maxAttempts) {
-                    attempts++;
-                    console.log(`🗺️ Map generation attempt ${attempts}/${maxAttempts} for game ${gameId}`);
-                    
-                    try {
-                        await generateMapWithRetry(gameId, width, height, gameState.players);
-                        
-                        // Verify map was created
-                        const mapTiles = await db.maps.findByGame(gameId);
-                        if (!mapTiles || mapTiles.length === 0) {
-                            throw new Error('Map generation failed - no tiles created');
-                        }
-                        
-                        console.log(`✅ Map generation attempt ${attempts} successful: ${mapTiles.length} tiles created`);
-                        break;
-                        
-                    } catch (mapError) {
-                        console.error(`❌ Map generation attempt ${attempts} failed:`, mapError);
-                        if (attempts >= maxAttempts) {
-                            throw mapError;
-                        }
-                        console.log(`🔄 Retrying map generation... (attempt ${attempts + 1}/${maxAttempts})`);
-                    }
+                // ✅ CRITICAL: Enhanced map generation with error handling
+                await generateMapWithRetry(gameId, width, height, gameState.players);
+                
+                // ✅ CRITICAL: Verify map was actually created
+                const mapVerification = await db.maps.findByGame(gameId);
+                if (!mapVerification || mapVerification.length === 0) {
+                    throw new Error('Map generation completed but no map data found in database');
                 }
                 
-                // Verify final map creation
-                const finalMapCheck = await db.maps.findByGame(gameId);
-                if (!finalMapCheck || finalMapCheck.length === 0) {
-                    throw new Error('Map verification failed after all attempts');
-                }
-                console.log(`✅ Map verification successful: ${finalMapCheck.length} tiles created`);
+                console.log(`✅ Map verification successful: ${mapVerification.length} tiles created`);
                 
-                // Set up initial game state
-                const players = await db.players.findByGame(gameId);
-                const firstPlayer = players.find(p => p.player_order === 1) || players[0];
+                // Set first player as current turn with gold initialization
+                const firstPlayer = gameState.players.sort((a, b) => a.player_order - b.player_order)[0];
                 
-                for (const player of players) {
+                // Initialize all players with starting gold
+                for (const player of gameState.players) {
                     await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [200, player.id]);
                 }
                 
@@ -313,13 +310,13 @@ socket.on('confirm-race', async (data) => {
                 
                 // Final verification
                 const finalGameState = await getGameState(gameId);
-                const finalMapCheck2 = await db.maps.findByGame(gameId);
+                const finalMapCheck = await db.maps.findByGame(gameId);
                 
-                if (finalGameState.game.status !== 'playing' || !finalMapCheck2 || finalMapCheck2.length === 0) {
+                if (finalGameState.game.status !== 'playing' || !finalMapCheck || finalMapCheck.length === 0) {
                     throw new Error('Final verification failed - game state or map data inconsistent');
                 }
                 
-                console.log(`✅ Final verification passed: status=${finalGameState.game.status}, map tiles=${finalMapCheck2.length}`);
+                console.log(`✅ Final verification passed: status=${finalGameState.game.status}, map tiles=${finalMapCheck.length}`);
                 
                 // Send completion event
                 const redirectUrl = `/game/${gameId}`;
@@ -342,7 +339,7 @@ socket.on('confirm-race', async (data) => {
             }
         }
     } catch (error) {
-        console.error('Error confirming race:', error);
+        console.error('❌ Error confirming race:', error);
         socket.emit('error', { message: 'Failed to confirm race' });
     }
 });
@@ -660,6 +657,21 @@ socket.on('confirm-race', async (data) => {
                 if (acknowledgment) acknowledgment({ success: false, error: errorMessage });
             }
         });
+
+socket.on('request-game-state', async (data) => {
+    try {
+        const { gameId } = data;
+        console.log(`📡 Game state requested for game ${gameId}`);
+        
+        const gameState = await getGameState(gameId);
+        socket.emit('game-state-update', gameState);
+        
+        console.log(`✅ Game state sent to requesting player`);
+    } catch (error) {
+        console.error('Error handling game state request:', error);
+        socket.emit('error', { message: 'Failed to get game state' });
+    }
+});
 
         socket.on('end-turn', async (data) => {
             try {

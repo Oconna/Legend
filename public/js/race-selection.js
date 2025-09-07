@@ -144,135 +144,142 @@ class RaceSelection {
         }
     }
 
-    bindEvents() {
-        // Socket events
-        this.socket.on('game-state-update', (gameState) => {
-            this.handleGameStateUpdate(gameState);
-        });
+bindEvents() {
+    // Socket events
+    this.socket.on('game-state-update', (gameState) => {
+        console.log('📡 Game state update received:', gameState);
+        this.handleGameStateUpdate(gameState);
+    });
 
-        this.socket.on('race-selected', (data) => {
-            console.log('Race selected confirmation:', data);
-        });
+    this.socket.on('race-selected', (data) => {
+        console.log('📡 Race selected confirmation:', data);
+    });
 
-        this.socket.on('race-confirmation-update', (data) => {
-            this.handleRaceConfirmationUpdate(data);
-        });
+    // ✅ CRITICAL: Improved race confirmation update handling
+    this.socket.on('race-confirmation-update', (data) => {
+        console.log('📡 Race confirmation update event:', data);
+        this.handleRaceConfirmationUpdate(data);
+    });
 
-        this.socket.on('map-generation-start', () => {
-            console.log('🗺️ Map generation started');
-            this.isMapGenerating = true;
-            this.showMapGenerationOverlay();
-        });
+    this.socket.on('map-generation-start', () => {
+        console.log('🗺️ Map generation started');
+        this.isMapGenerating = true;
+        this.showMapGenerationOverlay();
+    });
 
-        // ✅ CRITICAL FIX: Better map generation complete handling
-        this.socket.on('map-generation-complete', (data) => {
-            if (!this.hasReceivedMapComplete && !this.navigationInProgress) {
-                this.hasReceivedMapComplete = true;
-                this.navigationInProgress = true;
-                this.handleMapGenerationComplete(data);
-            } else {
-                console.log('🚨 Duplicate map-generation-complete event ignored');
-            }
-        });
-
-        this.socket.on('map-generation-failed', (data) => {
-            console.error('❌ Map generation failed:', data);
-            this.isMapGenerating = false;
-            this.hasReceivedMapComplete = false;
-            this.navigationInProgress = false;
-            Utils.showError('Kartengenerierung fehlgeschlagen: ' + data.error);
-            this.hideMapGenerationOverlay();
-        });
-
-        this.socket.on('chat-message', (message) => {
-            this.addChatMessage(message);
-        });
-
-        this.socket.on('error', (error) => {
-            Utils.showError(error.message);
-        });
-
-        // UI events
-        const confirmRaceBtn = document.getElementById('confirm-race-btn');
-        if (confirmRaceBtn) {
-            confirmRaceBtn.addEventListener('click', () => this.confirmRace());
+    // ✅ CRITICAL FIX: Better map generation complete handling
+    this.socket.on('map-generation-complete', (data) => {
+        console.log('🗺️ Map generation complete event received:', data);
+        
+        if (!this.hasReceivedMapComplete && !this.navigationInProgress) {
+            this.hasReceivedMapComplete = true;
+            this.navigationInProgress = true;
+            this.handleMapGenerationComplete(data);
+        } else {
+            console.log('🚨 Duplicate map-generation-complete event ignored');
         }
+    });
 
-        const showUnitsBtn = document.getElementById('show-units-btn');
-        if (showUnitsBtn) {
-            showUnitsBtn.addEventListener('click', () => this.showUnitsModal());
-        }
+    this.socket.on('map-generation-failed', (data) => {
+        console.error('❌ Map generation failed:', data);
+        this.isMapGenerating = false;
+        this.hasReceivedMapComplete = false;
+        this.navigationInProgress = false;
+        Utils.showError('Kartengenerierung fehlgeschlagen: ' + data.error);
+        this.hideMapGenerationOverlay();
+    });
 
-        const backToLobby = document.getElementById('back-to-lobby');
-        if (backToLobby) {
-            backToLobby.addEventListener('click', () => this.backToLobby());
-        }
+    this.socket.on('chat-message', (message) => {
+        this.addChatMessage(message);
+    });
 
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('tier-tab')) {
-                this.switchTier(parseInt(e.target.dataset.tier));
-            }
-        });
+    this.socket.on('error', (error) => {
+        console.error('❌ Socket error:', error);
+        Utils.showError(error.message);
+    });
 
-        // Chat events
-        const chatInput = document.getElementById('chat-input');
-        const sendChat = document.getElementById('send-chat');
-        
-        if (chatInput && sendChat) {
-            chatInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.sendChatMessage();
-                }
-            });
+    // ✅ NEW: Request game state event handler
+    this.socket.on('request-game-state', async (data) => {
+        console.log('📡 Game state requested, sending current state...');
+        const gameState = await getGameState(data.gameId);
+        this.socket.emit('game-state-update', gameState);
+    });
 
-            sendChat.addEventListener('click', () => this.sendChatMessage());
-        }
-        
-        // ✅ CRITICAL FIX: Only add event listeners if not navigating
-        this.beforeUnloadHandler = (e) => {
-            console.log('🚨 beforeunload event triggered', {
-                isNavigating: this.isNavigating,
-                isMapGenerating: this.isMapGenerating,
-                navigationInProgress: this.navigationInProgress
-            });
-            
-            // ✅ CRITICAL: Don't emit leave-game during navigation or map generation
-            if (!this.isNavigating && !this.isMapGenerating && !this.navigationInProgress) {
-                console.log('🚨 Emitting leave-game due to page unload');
-                try {
-                    this.socket.emit('leave-game', {
-                        gameId: this.gameId,
-                        playerName: this.playerName
-                    });
-                } catch (error) {
-                    console.error('Error emitting leave-game:', error);
-                }
-            } else {
-                console.log('✅ Allowing navigation - intentional navigation in progress');
-            }
-        };
-        
-        window.addEventListener('beforeunload', this.beforeUnloadHandler);
-        
-        this.visibilityChangeHandler = () => {
-            if (document.visibilityState === 'hidden' && 
-                !this.isNavigating && 
-                !this.isMapGenerating && 
-                !this.navigationInProgress) {
-                console.log('🚨 Page hidden - emitting leave-game');
-                try {
-                    this.socket.emit('leave-game', {
-                        gameId: this.gameId,
-                        playerName: this.playerName
-                    });
-                } catch (error) {
-                    console.error('Error emitting leave-game on visibility change:', error);
-                }
-            }
-        };
-        
-        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+    // UI events
+    const confirmRaceBtn = document.getElementById('confirm-race-btn');
+    if (confirmRaceBtn) {
+        confirmRaceBtn.addEventListener('click', () => this.confirmRace());
     }
+
+    const showUnitsBtn = document.getElementById('show-units-btn');
+    if (showUnitsBtn) {
+        showUnitsBtn.addEventListener('click', () => this.showUnitsModal());
+    }
+
+    const backToLobby = document.getElementById('back-to-lobby');
+    if (backToLobby) {
+        backToLobby.addEventListener('click', () => this.backToLobby());
+    }
+
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tier-tab')) {
+            this.switchTier(parseInt(e.target.dataset.tier));
+        }
+    });
+
+    // Chat events
+    const chatInput = document.getElementById('chat-input');
+    const sendChat = document.getElementById('send-chat');
+    
+    if (chatInput && sendChat) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.sendChatMessage();
+            }
+        });
+
+        sendChat.addEventListener('click', () => this.sendChatMessage());
+    }
+    
+    // ✅ CRITICAL FIX: Only add event listeners if not navigating
+    this.beforeUnloadHandler = (e) => {
+        console.log('🚨 beforeunload event triggered', {
+            isNavigating: this.isNavigating,
+            isMapGenerating: this.isMapGenerating,
+            navigationInProgress: this.navigationInProgress
+        });
+        
+        if (!this.isNavigating && !this.navigationInProgress) {
+            console.log('🚪 Sending leave-game on beforeunload');
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            }
+        } else {
+            console.log('🚫 Skipping leave-game - navigation in progress');
+        }
+    };
+
+    this.visibilityChangeHandler = () => {
+        console.log('👁️ Visibility change:', {
+            hidden: document.hidden,
+            isNavigating: this.isNavigating
+        });
+        
+        if (document.hidden && !this.isNavigating && !this.navigationInProgress) {
+            console.log('📱 Tab hidden - player might be switching tabs');
+        }
+    };
+
+    // ✅ CRITICAL: Only add listeners if not already navigating
+    if (!this.navigationInProgress) {
+        window.addEventListener('beforeunload', this.beforeUnloadHandler);
+        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+        console.log('✅ Added navigation event listeners');
+    }
+}
 
     joinGameRoom() {
         if (this.socket.connected) {
@@ -532,17 +539,35 @@ class RaceSelection {
         this.showWaitingForConfirmation();
     }
 
-    showWaitingForConfirmation() {
-        const selectedDisplay = document.getElementById('selected-race-display');
-        const racesGrid = document.getElementById('races-grid');
-        const waitingConfirmation = document.getElementById('waiting-confirmation');
+showWaitingForConfirmation() {
+    console.log('🎯 Showing waiting for confirmation screen...');
+    
+    const selectedDisplay = document.getElementById('selected-race-display');
+    const racesGrid = document.getElementById('races-grid');
+    const waitingConfirmation = document.getElementById('waiting-confirmation');
 
-        if (selectedDisplay) selectedDisplay.classList.add('hidden');
-        if (racesGrid) racesGrid.classList.add('hidden');
-        if (waitingConfirmation) waitingConfirmation.classList.remove('hidden');
-
-        this.updateConfirmationProgress();
+    if (selectedDisplay) {
+        selectedDisplay.classList.add('hidden');
+        console.log('✅ Hidden selected race display');
     }
+    if (racesGrid) {
+        racesGrid.classList.add('hidden');
+        console.log('✅ Hidden races grid');
+    }
+    if (waitingConfirmation) {
+        waitingConfirmation.classList.remove('hidden');
+        console.log('✅ Shown waiting confirmation');
+    }
+
+    // ✅ CRITICAL: Sofort nach dem Anzeigen den Progress aktualisieren
+    this.updateConfirmationProgress();
+    
+    // ✅ CRITICAL: Force refresh der aktuellen Daten vom Server
+    if (this.socket && this.socket.connected) {
+        console.log('🔄 Requesting fresh game state for confirmation update...');
+        this.socket.emit('request-game-state', { gameId: this.gameId });
+    }
+}
 
     handleGameStateUpdate(gameState) {
         if (!gameState || !gameState.players) return;
@@ -552,34 +577,70 @@ class RaceSelection {
         this.updateConfirmationProgress();
     }
 
-    handleRaceConfirmationUpdate(data) {
-        console.log('Race confirmation update:', data);
-        this.updateConfirmationProgress(data.confirmedCount, data.totalPlayers);
+handleRaceConfirmationUpdate(data) {
+    console.log('📡 Race confirmation update received:', data);
+    
+    // Sofort die UI aktualisieren
+    this.updateConfirmationProgress(data.confirmedCount, data.totalPlayers);
+    
+    // Optional: Auch gameData aktualisieren falls vorhanden
+    if (this.gameData && this.gameData.players) {
+        // Markiere die entsprechende Anzahl der Spieler als bestätigt
+        // (Das ist nur für den lokalen State, der Server ist die einzige Wahrheit)
+        console.log(`ℹ️ Local state: ${data.confirmedCount}/${data.totalPlayers} players confirmed`);
+    }
+}
+
+updateConfirmationProgress(confirmedCount = null, totalPlayers = null) {
+    // Fallback auf gameData falls keine Parameter übergeben wurden
+    if (confirmedCount === null && this.gameData) {
+        confirmedCount = this.gameData.players.filter(p => p.race_confirmed).length;
+        totalPlayers = this.gameData.players.length;
     }
 
-    updateConfirmationProgress(confirmedCount = null, totalPlayers = null) {
-        if (confirmedCount === null && this.gameData) {
-            confirmedCount = this.gameData.players.filter(p => p.race_confirmed).length;
-            totalPlayers = this.gameData.players.length;
-        }
+    console.log(`🔄 Updating confirmation progress: ${confirmedCount}/${totalPlayers}`);
 
-        const confirmedCountEl = document.getElementById('confirmed-count');
-        const totalPlayersEl = document.getElementById('total-players');
-        if (confirmedCountEl) confirmedCountEl.textContent = confirmedCount || 0;
-        if (totalPlayersEl) totalPlayersEl.textContent = totalPlayers || 0;
+    // ✅ CRITICAL: Update ALL confirmation displays
+    
+    // 1. Header status (always visible)
+    const confirmedCountEl = document.getElementById('confirmed-count');
+    const totalPlayersEl = document.getElementById('total-players');
+    if (confirmedCountEl) {
+        confirmedCountEl.textContent = confirmedCount || 0;
+        console.log(`✅ Updated header confirmed count: ${confirmedCount}`);
+    }
+    if (totalPlayersEl) {
+        totalPlayersEl.textContent = totalPlayers || 0;
+        console.log(`✅ Updated header total players: ${totalPlayers}`);
+    }
 
-        const confirmationProgress = document.getElementById('confirmation-progress');
-        const confirmationText = document.getElementById('confirmation-text');
+    // 2. Waiting confirmation progress bar
+    const confirmationProgress = document.getElementById('confirmation-progress');
+    const confirmationText = document.getElementById('confirmation-text');
+    
+    if (confirmationProgress && totalPlayers > 0) {
+        const percentage = (confirmedCount / totalPlayers) * 100;
+        confirmationProgress.style.width = `${percentage}%`;
+        console.log(`✅ Updated progress bar: ${percentage}%`);
+    }
+    
+    if (confirmationText) {
+        confirmationText.textContent = `${confirmedCount || 0} von ${totalPlayers || 0} bestätigt`;
+        console.log(`✅ Updated confirmation text: ${confirmedCount}/${totalPlayers}`);
+    }
+
+    // ✅ CRITICAL: Check if all players confirmed for automatic progression
+    if (confirmedCount > 0 && totalPlayers > 0 && confirmedCount === totalPlayers) {
+        console.log('🎉 All players confirmed! Map generation should start soon...');
         
-        if (confirmationProgress && totalPlayers > 0) {
-            const percentage = (confirmedCount / totalPlayers) * 100;
-            confirmationProgress.style.width = `${percentage}%`;
-        }
-        
+        // Update UI to show that all players are confirmed
         if (confirmationText) {
-            confirmationText.textContent = `${confirmedCount || 0} von ${totalPlayers || 0} bestätigt`;
+            confirmationText.textContent = `Alle ${totalPlayers} Spieler bestätigt! 🎉`;
+            confirmationText.style.color = '#4CAF50';
+            confirmationText.style.fontWeight = 'bold';
         }
     }
+}
 
     showMapGenerationOverlay() {
         const overlay = document.getElementById('loading-overlay');
