@@ -342,120 +342,222 @@ class GameController {
     }
 
     // ✅ CRITICAL FIX: Improved map loading with better error handling
-    async loadMapData() {
-        try {
-            console.log(`🗺️ Loading map data for game ${this.gameId}...`);
-            const mapData = await Utils.get(`/api/games/${this.gameId}/map`);
+async loadMapData() {
+    try {
+        console.log(`🗺️ Loading map data for game ${this.gameId}...`);
+        
+        // ✅ CRITICAL: Add retry logic for map loading
+        let mapData = null;
+        let retries = 0;
+        const maxRetries = 5;
+        const retryDelay = 1000; // 1 second
+        
+        while (retries < maxRetries && (!mapData || mapData.length === 0)) {
+            try {
+                mapData = await Utils.get(`/api/games/${this.gameId}/map`);
+                
+                if (mapData && mapData.length > 0) {
+                    console.log(`✅ Map data loaded successfully: ${mapData.length} tiles`);
+                    break;
+                } else {
+                    console.log(`⚠️ Map data empty on attempt ${retries + 1}/${maxRetries}`);
+                    retries++;
+                    
+                    if (retries < maxRetries) {
+                        console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ Map loading attempt ${retries + 1} failed:`, error);
+                retries++;
+                
+                if (retries < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                }
+            }
+        }
+        
+        if (mapData && mapData.length > 0) {
+            console.log(`🎨 Loading map with ${mapData.length} tiles...`);
             
-            if (mapData && mapData.length > 0) {
-                console.log(`✅ Map data loaded: ${mapData.length} tiles`);
-                
-                // ✅ CRITICAL: Wait for map to fully load before proceeding
-                await this.map.loadMap(mapData);
-                console.log('✅ Map loaded and rendered successfully');
-                
+            // ✅ CRITICAL: Ensure map is properly initialized before loading
+            if (!this.map) {
+                console.error('❌ Map component not initialized!');
+                throw new Error('Map component not available');
+            }
+            
+            // ✅ CRITICAL: Wait for map to fully load
+            await this.map.loadMap(mapData);
+            console.log('✅ Map loaded and rendered successfully');
+            
+            // ✅ CRITICAL: Verify map was actually loaded
+            if (this.map.mapData && this.map.mapData.length > 0) {
+                console.log('✅ Map data verification successful');
                 return mapData;
             } else {
-                console.log('⚠️ No map data found - map might still be generating');
-                
-                // ✅ IMPROVED: Show placeholder instead of error
-                this.showMapPlaceholder();
-                return [];
+                throw new Error('Map failed to load properly');
             }
-        } catch (error) {
-            console.error('❌ Error loading map:', error);
             
-            // ✅ IMPROVED: Show placeholder on error instead of failing
+        } else {
+            console.log('⚠️ No map data available after all retries - using placeholder');
             this.showMapPlaceholder();
-            Utils.showError('Karte konnte nicht geladen werden. Wird als Platzhalter angezeigt.');
             return [];
         }
+        
+    } catch (error) {
+        console.error('❌ Critical error loading map:', error);
+        
+        // ✅ IMPROVED: Always show placeholder on error
+        this.showMapPlaceholder();
+        Utils.showError('Karte konnte nicht geladen werden. Platzhalter wird angezeigt.');
+        return [];
     }
+}
 
     // ✅ CRITICAL FIX: Improved units loading with better error handling
-    async loadUnitsData() {
-        try {
-            console.log(`🔍 Loading units data for game ${this.gameId}...`);
-            const unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
-            
-            console.log(`✅ Units data received:`, unitsData);
-            
-            if (Array.isArray(unitsData)) {
-                await this.units.loadUnits(unitsData);
+async loadUnitsData() {
+    try {
+        console.log(`🔍 Loading units data for game ${this.gameId}...`);
+        
+        // ✅ Add retry logic for units as well
+        let unitsData = null;
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (retries < maxRetries) {
+            try {
+                unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
+                console.log(`✅ Units data received:`, unitsData);
+                break;
+            } catch (error) {
+                console.error(`❌ Units loading attempt ${retries + 1} failed:`, error);
+                retries++;
                 
-                // ✅ CRITICAL: Update map with units after loading
-                if (this.map && typeof this.map.updateUnits === 'function') {
-                    this.map.updateUnits(unitsData);
+                if (retries < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
-                
-                console.log(`✅ Loaded ${unitsData.length} units successfully`);
-                return unitsData;
-            } else {
-                console.warn('⚠️ Units data is not an array:', unitsData);
-                await this.units.loadUnits([]);
-                return [];
+            }
+        }
+        
+        if (!unitsData) {
+            console.warn('⚠️ No units data received after retries');
+            unitsData = [];
+        }
+        
+        if (Array.isArray(unitsData)) {
+            console.log(`📋 Processing ${unitsData.length} units...`);
+            await this.units.loadUnits(unitsData);
+            
+            // ✅ CRITICAL: Update map with units after loading
+            if (this.map && typeof this.map.updateUnits === 'function') {
+                this.map.updateUnits(unitsData);
+                console.log('✅ Map updated with units');
             }
             
-        } catch (error) {
-            console.error('❌ Error loading units:', error);
+            console.log(`✅ Loaded ${unitsData.length} units successfully`);
+            return unitsData;
             
-            // ✅ IMPROVED: Don't fail on units error, just use empty array
+        } else {
+            console.warn('⚠️ Units data is not an array:', unitsData);
             await this.units.loadUnits([]);
-            Utils.showError('Einheiten konnten nicht geladen werden.');
             return [];
         }
+        
+    } catch (error) {
+        console.error('❌ Error loading units:', error);
+        
+        // ✅ IMPROVED: Don't fail on units error, just use empty array
+        await this.units.loadUnits([]);
+        Utils.showError('Einheiten konnten nicht geladen werden.');
+        return [];
     }
+}
 
     // ✅ IMPROVED: Better placeholder map for development
-    showMapPlaceholder() {
-        try {
-            console.log('🎨 Creating placeholder map...');
-            
-            const placeholderMap = [];
-            const size = 20;
-            
-            for (let y = 0; y < size; y++) {
-                for (let x = 0; x < size; x++) {
-                    // Create more realistic terrain distribution
-                    let terrainType = 1; // Default grass
-                    
-                    if (Math.random() < 0.15) terrainType = 2; // Mountain
-                    else if (Math.random() < 0.1) terrainType = 3; // Swamp
-                    else if (Math.random() < 0.12) terrainType = 4; // Water
-                    else if (Math.random() < 0.08) terrainType = 5; // Forest
-                    
-                    // Add some buildings for testing
-                    let buildingType = null;
-                    let buildingOwner = null;
-                    
-                    if ((x === 5 && y === 5) || (x === 15 && y === 15)) {
-                        buildingType = 1; // Village
-                        buildingOwner = this.currentPlayerId;
-                    }
-                    
-                    placeholderMap.push({
-                        x_pos: x,
-                        y_pos: y,
-                        terrain_type_id: terrainType,
-                        building_type_id: buildingType,
-                        building_owner_id: buildingOwner
-                    });
+showMapPlaceholder() {
+    try {
+        console.log('🎨 Creating enhanced placeholder map...');
+        
+        const placeholderMap = [];
+        const size = 25; // Slightly larger for better testing
+        
+        // ✅ Create more realistic terrain distribution
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                let terrainType = 1; // Default grass
+                
+                // Create terrain patterns for more natural look
+                if (y < 3 || y > size - 4) {
+                    // Top and bottom borders - more mountains
+                    terrainType = Math.random() < 0.3 ? 2 : 1;
+                } else if (x < 3 || x > size - 4) {
+                    // Left and right borders - mixed terrain
+                    terrainType = Math.random() < 0.2 ? 2 : (Math.random() < 0.1 ? 5 : 1);
+                } else {
+                    // Interior - varied terrain
+                    const rand = Math.random();
+                    if (rand < 0.1) terrainType = 2; // Mountain
+                    else if (rand < 0.15) terrainType = 3; // Swamp
+                    else if (rand < 0.25) terrainType = 4; // Water
+                    else if (rand < 0.35) terrainType = 5; // Forest
+                    else if (rand < 0.4) terrainType = 6; // Desert
+                    else terrainType = 1; // Grass
                 }
+                
+                // ✅ Add strategic buildings for both players
+                let buildingType = null;
+                let buildingOwner = null;
+                
+                // Player 1 buildings (top-left quadrant)
+                if ((x === 5 && y === 5) || (x === 8 && y === 3) || (x === 3 && y === 8)) {
+                    buildingType = x === 5 && y === 5 ? 2 : 1; // Castle or Village
+                    buildingOwner = this.currentPlayerId;
+                }
+                
+                // Player 2 buildings (bottom-right quadrant) 
+                if ((x === size-6 && y === size-6) || (x === size-9 && y === size-4) || (x === size-4 && y === size-9)) {
+                    buildingType = x === size-6 && y === size-6 ? 2 : 1; // Castle or Village
+                    // Find second player if available
+                    const secondPlayer = this.players.find(p => p.id !== this.currentPlayerId);
+                    buildingOwner = secondPlayer ? secondPlayer.id : this.currentPlayerId;
+                }
+                
+                placeholderMap.push({
+                    x_pos: x,
+                    y_pos: y,
+                    terrain_type_id: terrainType,
+                    building_type_id: buildingType,
+                    building_owner_id: buildingOwner,
+                    // Add placeholder terrain names for better debugging
+                    terrain_name: this.getTerrainName(terrainType),
+                    building_name: buildingType ? this.getBuildingName(buildingType) : null
+                });
             }
-            
-            // ✅ CRITICAL: Wait for map loading to complete
-            this.map.loadMap(placeholderMap, []).then(() => {
-                console.log('✅ Placeholder map loaded successfully');
-                Utils.showInfo('Development-Karte geladen (Kartengenerierung läuft im Hintergrund)');
-            }).catch(error => {
-                console.error('❌ Error loading placeholder map:', error);
-                Utils.showError('Fehler beim Laden der Platzhalter-Karte');
-            });
-            
-        } catch (error) {
-            console.error('❌ Error creating placeholder map:', error);
         }
+        
+        console.log(`🎨 Generated placeholder map with ${placeholderMap.length} tiles`);
+        
+        // ✅ CRITICAL: Ensure map component exists before loading
+        if (!this.map) {
+            console.error('❌ Map component not available for placeholder');
+            return;
+        }
+        
+        // ✅ CRITICAL: Load placeholder map with current units
+        this.map.loadMap(placeholderMap, this.units ? this.units.units : []).then(() => {
+            console.log('✅ Placeholder map loaded successfully');
+            Utils.showInfo('Development-Karte geladen (Echte Karte wird im Hintergrund generiert)');
+        }).catch(error => {
+            console.error('❌ Error loading placeholder map:', error);
+            Utils.showError('Fehler beim Laden der Platzhalter-Karte');
+        });
+        
+    } catch (error) {
+        console.error('❌ Error creating placeholder map:', error);
+        Utils.showError('Fehler beim Erstellen der Platzhalter-Karte');
     }
+}
 
     joinGameRoom() {
         if (this.socket.connected) {

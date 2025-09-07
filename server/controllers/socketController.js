@@ -227,91 +227,112 @@ module.exports = (io) => {
         });
 
         // ✅ CRITICAL: Improved race confirmation handling
-        socket.on('confirm-race', async (data) => {
-            try {
-                const { gameId, playerName } = data;
-                console.log(`🛡️ CONFIRM-RACE: ${playerName} confirming race for game ${gameId}`);
-                
-                await db.players.confirmRace(gameId, playerName);
-                
-                const gameState = await getGameState(gameId);
-                const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
-                const totalPlayers = gameState.players.length;
-                
-                console.log(`🛡️ Race confirmation: ${confirmedCount}/${totalPlayers} players confirmed`);
-                
-                io.to(`game-${gameId}`).emit('race-confirmation-update', {
-                    playerName,
-                    confirmedCount,
-                    totalPlayers
-                });
-
-                // Check if all players have confirmed their races
-                const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
-                
-                if (allConfirmed) {
-                    console.log('🗺️ All players confirmed races, starting map generation...');
-                    
-                    // ✅ CRITICAL: Update phase tracking
-                    gamePhaseTracking.set(gameId, 'map_generation');
-                    
-                    io.to(`game-${gameId}`).emit('map-generation-start');
-                    
-                    try {
-                        // Parse map size
-                        const [width, height] = gameState.game.map_size.split('x').map(Number);
-                        
-                        console.log(`🗺️ Starting map generation: ${width}x${height} for ${gameState.players.length} players`);
-                        
-                        // Generate map
-                        await generateMap(gameId, width, height, gameState.players);
-                        
-                        // Set first player as current turn with gold initialization
-                        const firstPlayer = gameState.players.sort((a, b) => a.player_order - b.player_order)[0];
-                        
-                        // Initialize all players with starting gold
-                        for (const player of gameState.players) {
-                            await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [200, player.id]);
-                        }
-                        
-                        await db.games.updateCurrentTurn(gameId, 1, firstPlayer.id);
-                        
-                        // Update game status to playing
-                        await db.games.updateStatus(gameId, 'playing');
-                        
-                        // ✅ CRITICAL: Update phase tracking
-                        gamePhaseTracking.set(gameId, 'playing');
-                        
-                        console.log('🗺️ Map generation completed successfully!');
-                        
-                        // ✅ IMPORTANT: Wait a moment for database updates to complete
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // Send completion event with proper player parameter handling
-                        const redirectUrl = `/game/${gameId}`;
-                        
-                        console.log('🚀 Sending map-generation-complete event with redirect:', redirectUrl);
-                        io.to(`game-${gameId}`).emit('map-generation-complete', {
-                            redirectUrl: redirectUrl,
-                            gameStatus: 'playing'
-                        });
-                        
-                    } catch (error) {
-                        console.error('❌ Map generation failed:', error);
-                        
-                        // ✅ CRITICAL: Reset phase tracking on error
-                        gamePhaseTracking.set(gameId, 'race_selection');
-                        
-                        io.to(`game-${gameId}`).emit('map-generation-failed', {
-                            error: 'Kartengenerierung fehlgeschlagen: ' + error.message
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error('Error confirming race:', error);
-                socket.emit('error', { message: 'Failed to confirm race' });
-            }
+socket.on('confirm-race', async (data) => {
+    try {
+        const { gameId, playerName } = data;
+        console.log(`🛡️ CONFIRM-RACE: ${playerName} confirming race for game ${gameId}`);
+        
+        await db.players.confirmRace(gameId, playerName);
+        
+        const gameState = await getGameState(gameId);
+        const confirmedCount = gameState.players.filter(p => p.race_confirmed).length;
+        const totalPlayers = gameState.players.length;
+        
+        console.log(`🛡️ Race confirmation: ${confirmedCount}/${totalPlayers} players confirmed`);
+        
+        io.to(`game-${gameId}`).emit('race-confirmation-update', {
+            playerName,
+            confirmedCount,
+            totalPlayers
         });
+
+        // Check if all players have confirmed their races
+        const allConfirmed = gameState.players.every(p => p.race_confirmed && p.race_id);
+        
+        if (allConfirmed) {
+            console.log('🗺️ All players confirmed races, starting map generation...');
+            
+            // ✅ CRITICAL: Update phase tracking
+            gamePhaseTracking.set(gameId, 'map_generation');
+            
+            io.to(`game-${gameId}`).emit('map-generation-start');
+            
+            try {
+                // Parse map size
+                const [width, height] = gameState.game.map_size.split('x').map(Number);
+                
+                console.log(`🗺️ Starting map generation: ${width}x${height} for ${gameState.players.length} players`);
+                
+                // ✅ CRITICAL: Enhanced map generation with error handling
+                await generateMapWithRetry(gameId, width, height, gameState.players);
+                
+                // ✅ CRITICAL: Verify map was actually created
+                const mapVerification = await db.maps.findByGame(gameId);
+                if (!mapVerification || mapVerification.length === 0) {
+                    throw new Error('Map generation completed but no map data found in database');
+                }
+                
+                console.log(`✅ Map verification successful: ${mapVerification.length} tiles created`);
+                
+                // Set first player as current turn with gold initialization
+                const firstPlayer = gameState.players.sort((a, b) => a.player_order - b.player_order)[0];
+                
+                // Initialize all players with starting gold
+                for (const player of gameState.players) {
+                    await db.query('UPDATE game_players SET gold = ? WHERE id = ?', [200, player.id]);
+                }
+                
+                await db.games.updateCurrentTurn(gameId, 1, firstPlayer.id);
+                
+                // Update game status to playing
+                await db.games.updateStatus(gameId, 'playing');
+                
+                // ✅ CRITICAL: Update phase tracking
+                gamePhaseTracking.set(gameId, 'playing');
+                
+                console.log('🗺️ Map generation completed successfully!');
+                
+                // ✅ CRITICAL: Wait for database to fully commit changes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // ✅ CRITICAL: Final verification before sending complete event
+                const finalGameState = await getGameState(gameId);
+                const finalMapCheck = await db.maps.findByGame(gameId);
+                
+                if (finalGameState.game.status !== 'playing' || !finalMapCheck || finalMapCheck.length === 0) {
+                    throw new Error('Final verification failed - game state or map data inconsistent');
+                }
+                
+                console.log(`✅ Final verification passed: status=${finalGameState.game.status}, map tiles=${finalMapCheck.length}`);
+                
+                // Send completion event
+                const redirectUrl = `/game/${gameId}`;
+                
+                console.log('🚀 Sending map-generation-complete event to all players:', redirectUrl);
+                io.to(`game-${gameId}`).emit('map-generation-complete', {
+                    redirectUrl: redirectUrl,
+                    gameStatus: 'playing'
+                });
+                
+            } catch (error) {
+                console.error('❌ Map generation failed:', error);
+                
+                // ✅ CRITICAL: Reset phase tracking on error
+                gamePhaseTracking.set(gameId, 'race_selection');
+                
+                // ✅ CRITICAL: Reset game status on failure
+                await db.games.updateStatus(gameId, 'race_selection');
+                
+                io.to(`game-${gameId}`).emit('map-generation-failed', {
+                    error: 'Kartengenerierung fehlgeschlagen: ' + error.message
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error confirming race:', error);
+        socket.emit('error', { message: 'Failed to confirm race' });
+    }
+});
 
         // Chat message
         socket.on('send-chat-message', async (data) => {
@@ -820,18 +841,45 @@ module.exports = (io) => {
         return state;
     }
 
-    async function generateMap(gameId, width, height, players) {
-        const mapGenerator = require('../utils/mapGenerator');
-        
+async function generateMapWithRetry(gameId, width, height, players, maxRetries = 3) {
+    const mapGenerator = require('../utils/mapGenerator');
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`🗺️ Generating map: ${width}x${height} for ${players.length} players`);
+            console.log(`🗺️ Map generation attempt ${attempt}/${maxRetries} for game ${gameId}`);
+            
+            // ✅ CRITICAL: Clean up any existing map data from failed attempts
+            if (attempt > 1) {
+                console.log('🧹 Cleaning up previous failed attempt...');
+                await db.query('DELETE FROM game_maps WHERE game_id = ?', [gameId]);
+                await db.query('DELETE FROM game_units WHERE game_id = ?', [gameId]);
+            }
+            
             await mapGenerator.generateMap(gameId, width, height, players);
-            console.log(`✅ Map generation completed for game ${gameId}`);
+            
+            // ✅ CRITICAL: Verify the map was actually created
+            const mapCheck = await db.maps.findByGame(gameId);
+            if (!mapCheck || mapCheck.length === 0) {
+                throw new Error(`Map generation attempt ${attempt} produced no map data`);
+            }
+            
+            console.log(`✅ Map generation attempt ${attempt} successful: ${mapCheck.length} tiles created`);
+            return; // Success!
+            
         } catch (error) {
-            console.error('❌ Error generating map:', error);
-            throw error;
+            console.error(`❌ Map generation attempt ${attempt} failed:`, error);
+            
+            if (attempt === maxRetries) {
+                // Final attempt failed
+                throw new Error(`Map generation failed after ${maxRetries} attempts: ${error.message}`);
+            } else {
+                // Wait before retry
+                console.log(`⏳ Waiting 2 seconds before retry attempt ${attempt + 1}...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
         }
     }
+}
 
     async function givePlayerIncome(gameId, playerId) {
         try {

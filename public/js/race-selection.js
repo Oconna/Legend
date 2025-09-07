@@ -1,8 +1,9 @@
-// Race Selection page functionality - COMPLETE FIXED VERSION
+// Race Selection page functionality - NAVIGATION FIXED VERSION
 class RaceSelection {
     constructor() {
         this.socket = io({
-            closeOnBeforeunload: false // ✅ CRITICAL: Prevent automatic disconnect
+            closeOnBeforeunload: false,
+            forceNew: true // ✅ CRITICAL: Force new connection to prevent issues
         });
         this.gameId = Utils.getGameId();
         
@@ -17,34 +18,26 @@ class RaceSelection {
         this.currentTier = 1;
         this.currentUnits = [];
         
-        // ✅ NEW: Better navigation tracking
+        // ✅ CRITICAL: Navigation state management
         this.isNavigating = false;
         this.isMapGenerating = false;
-        this.navigationTimeout = null;
-        this.hasReceivedMapComplete = false; // ✅ CRITICAL: Prevent duplicate redirects
+        this.hasReceivedMapComplete = false;
+        this.navigationInProgress = false; // ✅ NEW: Prevent duplicate navigation
         
         this.init();
     }
 
-    // ✅ IMPROVED: Multiple methods to get player name
     getPlayerName() {
-        // 1. Try URL parameter
         let playerName = Utils.getUrlParameter('player');
-        
-        // 2. Try localStorage
         if (!playerName) {
             playerName = Utils.getFromStorage('playerName');
         }
-        
-        // 3. Try transition parameter from game start
         if (!playerName) {
             const transition = Utils.getUrlParameter('transition');
             if (transition === 'start') {
-                // This came from lobby, try localStorage again
                 playerName = Utils.getFromStorage('playerName');
             }
         }
-        
         return playerName;
     }
 
@@ -60,7 +53,6 @@ class RaceSelection {
         this.bindEvents();
         this.setupConnectionHandling();
         
-        // ✅ Wait for socket connection before proceeding
         if (this.socket.connected) {
             this.startLoadSequence();
         } else {
@@ -78,7 +70,6 @@ class RaceSelection {
 
         this.socket.on('disconnect', (reason) => {
             console.log('🔌 Socket disconnected:', reason);
-            // ✅ IMPROVED: Only show error if not navigating
             if (reason !== 'io client disconnect' && !this.isNavigating && !this.isMapGenerating) {
                 Utils.showError('Verbindung verloren. Versuche zu reconnectieren...');
             }
@@ -94,19 +85,15 @@ class RaceSelection {
 
     async startLoadSequence() {
         try {
-            // Step 1: Verify game exists and player has access
             console.log('📝 Step 1: Verifying game access...');
             await this.verifyGameAccess();
             
-            // Step 2: Join socket room
             console.log('🏠 Step 2: Joining game room...');
             this.joinGameRoom();
             
-            // Step 3: Load races
             console.log('🛡️ Step 3: Loading races...');
             await this.loadRaces();
             
-            // Step 4: Load chat
             console.log('💬 Step 4: Loading chat...');
             await this.loadChatHistory();
             
@@ -116,15 +103,13 @@ class RaceSelection {
             console.error('❌ Error in load sequence:', error);
             Utils.showError('Fehler beim Laden der Rassenauswahl: ' + error.message);
             
-            // Fallback to lobby after 3 seconds with player parameter
             setTimeout(() => {
-                this.isNavigating = true; // ✅ Mark as intentional
+                this.isNavigating = true;
                 window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
             }, 3000);
         }
     }
 
-    // Replace loadGameData() with verifyGameAccess()
     async verifyGameAccess() {
         try {
             const data = await Utils.get(`/api/games/${this.gameId}`);
@@ -133,12 +118,10 @@ class RaceSelection {
                 throw new Error('Spiel nicht gefunden');
             }
 
-            // ✅ IMPORTANT: Allow both lobby and race_selection status
             if (data.game.status !== 'race_selection' && data.game.status !== 'lobby') {
                 throw new Error(`Spiel ist in falscher Phase: ${data.game.status}`);
             }
 
-            // Check if player is in the game
             const currentPlayer = data.players.find(p => p.player_name === this.playerName);
             if (!currentPlayer) {
                 throw new Error('Du bist nicht in diesem Spiel');
@@ -147,7 +130,6 @@ class RaceSelection {
             this.gameData = data;
             this.updateGameInfo();
             
-            // Check if player already confirmed race
             if (currentPlayer.race_confirmed) {
                 this.hasConfirmed = true;
                 this.selectedRace = currentPlayer.race_id;
@@ -176,17 +158,17 @@ class RaceSelection {
             this.handleRaceConfirmationUpdate(data);
         });
 
-        // ✅ IMPROVED: Better map generation handling
         this.socket.on('map-generation-start', () => {
             console.log('🗺️ Map generation started');
             this.isMapGenerating = true;
             this.showMapGenerationOverlay();
         });
 
-        // ✅ CRITICAL FIX: Prevent duplicate map-generation-complete handling
+        // ✅ CRITICAL FIX: Better map generation complete handling
         this.socket.on('map-generation-complete', (data) => {
-            if (!this.hasReceivedMapComplete) {
+            if (!this.hasReceivedMapComplete && !this.navigationInProgress) {
                 this.hasReceivedMapComplete = true;
+                this.navigationInProgress = true;
                 this.handleMapGenerationComplete(data);
             } else {
                 console.log('🚨 Duplicate map-generation-complete event ignored');
@@ -196,7 +178,8 @@ class RaceSelection {
         this.socket.on('map-generation-failed', (data) => {
             console.error('❌ Map generation failed:', data);
             this.isMapGenerating = false;
-            this.hasReceivedMapComplete = false; // Reset on failure
+            this.hasReceivedMapComplete = false;
+            this.navigationInProgress = false;
             Utils.showError('Kartengenerierung fehlgeschlagen: ' + data.error);
             this.hideMapGenerationOverlay();
         });
@@ -225,7 +208,6 @@ class RaceSelection {
             backToLobby.addEventListener('click', () => this.backToLobby());
         }
 
-        // Tier tabs in units modal
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('tier-tab')) {
                 this.switchTier(parseInt(e.target.dataset.tier));
@@ -246,36 +228,46 @@ class RaceSelection {
             sendChat.addEventListener('click', () => this.sendChatMessage());
         }
         
-        // ✅ IMPROVED: Better beforeunload handling
+        // ✅ CRITICAL FIX: Only add event listeners if not navigating
         this.beforeUnloadHandler = (e) => {
             console.log('🚨 beforeunload event triggered', {
                 isNavigating: this.isNavigating,
-                isMapGenerating: this.isMapGenerating
+                isMapGenerating: this.isMapGenerating,
+                navigationInProgress: this.navigationInProgress
             });
             
-            // Only prevent if user is not intentionally navigating AND not in map generation
-            if (!this.isNavigating && !this.isMapGenerating) {
+            // ✅ CRITICAL: Don't emit leave-game during navigation or map generation
+            if (!this.isNavigating && !this.isMapGenerating && !this.navigationInProgress) {
                 console.log('🚨 Emitting leave-game due to page unload');
-                // Try to send leave signal (might not work due to timing)
-                this.socket.emit('leave-game', {
-                    gameId: this.gameId,
-                    playerName: this.playerName
-                });
+                try {
+                    this.socket.emit('leave-game', {
+                        gameId: this.gameId,
+                        playerName: this.playerName
+                    });
+                } catch (error) {
+                    console.error('Error emitting leave-game:', error);
+                }
             } else {
-                console.log('✅ Allowing navigation - intentional or map generation');
+                console.log('✅ Allowing navigation - intentional navigation in progress');
             }
         };
         
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         
-        // ✅ NEW: Cleanup on page hide (better than beforeunload)
         this.visibilityChangeHandler = () => {
-            if (document.visibilityState === 'hidden' && !this.isNavigating && !this.isMapGenerating) {
+            if (document.visibilityState === 'hidden' && 
+                !this.isNavigating && 
+                !this.isMapGenerating && 
+                !this.navigationInProgress) {
                 console.log('🚨 Page hidden - emitting leave-game');
-                this.socket.emit('leave-game', {
-                    gameId: this.gameId,
-                    playerName: this.playerName
-                });
+                try {
+                    this.socket.emit('leave-game', {
+                        gameId: this.gameId,
+                        playerName: this.playerName
+                    });
+                } catch (error) {
+                    console.error('Error emitting leave-game on visibility change:', error);
+                }
             }
         };
         
@@ -317,7 +309,6 @@ class RaceSelection {
                     }, false);
                 });
                 
-                // Scroll to bottom
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
         } catch (error) {
@@ -341,7 +332,6 @@ class RaceSelection {
         const raceDiv = Utils.createElement('div', 'race-card');
         raceDiv.setAttribute('data-race-id', race.id);
 
-        // Check if this race is selected
         if (this.selectedRace === race.id) {
             raceDiv.classList.add('selected');
         }
@@ -377,12 +367,10 @@ class RaceSelection {
     selectRace(race) {
         if (this.hasConfirmed) return;
 
-        // Remove previous selection
         document.querySelectorAll('.race-card').forEach(card => {
             card.classList.remove('selected');
         });
 
-        // Select new race
         const raceCard = document.querySelector(`[data-race-id="${race.id}"]`);
         if (raceCard) {
             raceCard.classList.add('selected');
@@ -391,7 +379,6 @@ class RaceSelection {
         this.selectedRace = race.id;
         this.selectedRaceData = race;
 
-        // Emit race selection to server (but don't confirm yet)
         this.socket.emit('select-race', {
             gameId: this.gameId,
             playerName: this.playerName,
@@ -408,7 +395,6 @@ class RaceSelection {
         if (selectedDisplay && racesGrid) {
             selectedDisplay.classList.remove('hidden');
             
-            // Update selected race display
             const raceImage = document.getElementById('selected-race-image');
             const raceName = document.getElementById('selected-race-name');
             const raceDescription = document.getElementById('selected-race-description');
@@ -427,7 +413,6 @@ class RaceSelection {
             if (tier2Cost) tier2Cost.textContent = `${race.tier_2_cost || 500} Gold`;
             if (tier3Cost) tier3Cost.textContent = `${race.tier_3_cost || 1000} Gold`;
 
-            // Scroll races grid up
             racesGrid.style.maxHeight = '300px';
             racesGrid.style.overflowY = 'auto';
         }
@@ -440,17 +425,14 @@ class RaceSelection {
         }
 
         try {
-            // Load units for selected race
             const units = await Utils.get(`/api/games/${this.gameId}/races/${this.selectedRace}/units`);
             this.currentUnits = units;
             
-            // Update modal title
             const modalTitle = document.getElementById('units-modal-title');
             if (modalTitle) {
                 modalTitle.textContent = `Einheiten von ${this.selectedRaceData.name}`;
             }
 
-            // Reset to tier 1
             this.currentTier = 1;
             this.updateTierTabs();
             this.renderUnitsGrid();
@@ -483,7 +465,6 @@ class RaceSelection {
 
         Utils.clearElement(unitsGrid);
 
-        // Calculate tier bonuses
         const tierBonus = this.currentTier === 1 ? 0 : (this.currentTier === 2 ? 0.2 : 0.4);
         const tierMultiplier = 1 + tierBonus;
 
@@ -498,7 +479,6 @@ class RaceSelection {
 
         const imageUrl = unit.image_filename ? `/images/units/${unit.image_filename}` : '/images/units/default.png';
         
-        // Calculate enhanced stats
         const enhancedHealth = Math.round(unit.health_points * tierMultiplier);
         const enhancedAttack = Math.round(unit.attack_power * tierMultiplier);
         const enhancedRange = Math.max(1, Math.round(unit.range * tierMultiplier));
@@ -543,7 +523,6 @@ class RaceSelection {
     confirmRace() {
         if (!this.selectedRace || this.hasConfirmed) return;
 
-        // Confirm race selection
         this.socket.emit('confirm-race', {
             gameId: this.gameId,
             playerName: this.playerName
@@ -584,13 +563,11 @@ class RaceSelection {
             totalPlayers = this.gameData.players.length;
         }
 
-        // Update header status
         const confirmedCountEl = document.getElementById('confirmed-count');
         const totalPlayersEl = document.getElementById('total-players');
         if (confirmedCountEl) confirmedCountEl.textContent = confirmedCount || 0;
         if (totalPlayersEl) totalPlayersEl.textContent = totalPlayers || 0;
 
-        // Update waiting confirmation display
         const confirmationProgress = document.getElementById('confirmation-progress');
         const confirmationText = document.getElementById('confirmation-text');
         
@@ -604,7 +581,6 @@ class RaceSelection {
         }
     }
 
-    // ✅ NEW: Show map generation overlay
     showMapGenerationOverlay() {
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
@@ -631,37 +607,18 @@ class RaceSelection {
 
     // ✅ CRITICAL FIX: Completely rewritten map generation complete handling
     handleMapGenerationComplete(data) {
-        console.log('🗺️ Map generation complete event received:', data);
+        console.log('🗺️ Map generation complete event received for navigation:', data);
         
-        // ✅ CRITICAL: Immediate state changes to prevent race conditions
+        // ✅ CRITICAL: Immediate state changes
         this.isMapGenerating = false;
         this.isNavigating = true;
         
-        console.log('🔌 Starting immediate cleanup for navigation...');
+        console.log('🔌 Starting IMMEDIATE cleanup for navigation...');
         
-        // ✅ CRITICAL: Clean up all event listeners IMMEDIATELY
-        try {
-            if (this.beforeUnloadHandler) {
-                window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-                this.beforeUnloadHandler = null;
-                console.log('✅ Removed beforeunload listener');
-            }
-            
-            if (this.visibilityChangeHandler) {
-                document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
-                this.visibilityChangeHandler = null;
-                console.log('✅ Removed visibilitychange listener');
-            }
-            
-            // ✅ CRITICAL: Remove ALL socket listeners immediately
-            this.socket.removeAllListeners();
-            console.log('✅ Removed all socket listeners');
-            
-        } catch (error) {
-            console.error('❌ Error during cleanup:', error);
-        }
+        // ✅ CRITICAL: Remove event listeners IMMEDIATELY to prevent any leave-game events
+        this.cleanup();
         
-        // ✅ CRITICAL: Update UI to show transition
+        // Update UI
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
             const loadingText = document.getElementById('loading-text');
@@ -677,10 +634,9 @@ class RaceSelection {
         
         Utils.showSuccess('Karte generiert! Weiterleitung zum Spiel...');
         
-        // ✅ CRITICAL: Prepare redirect URL with player parameter
+        // ✅ CRITICAL: Prepare redirect URL
         let redirectUrl = data.redirectUrl || `/game/${this.gameId}`;
         
-        // Ensure player parameter is included
         if (this.playerName) {
             const separator = redirectUrl.includes('?') ? '&' : '?';
             redirectUrl = `${redirectUrl}${separator}player=${encodeURIComponent(this.playerName)}`;
@@ -688,19 +644,9 @@ class RaceSelection {
         
         console.log('🚀 Final redirect URL prepared:', redirectUrl);
         
-        // ✅ CRITICAL: Use immediate navigation without delay to prevent issues
-        console.log('🎮 Executing immediate navigation...');
-        
-        // Clear any existing timeouts
-        if (this.navigationTimeout) {
-            clearTimeout(this.navigationTimeout);
-        }
-        
-        // ✅ CRITICAL: Navigate immediately with minimal delay
-        setTimeout(() => {
-            console.log('🚀 NAVIGATING TO GAME NOW:', redirectUrl);
-            window.location.href = redirectUrl;
-        }, 500); // Minimal delay for UI feedback only
+        // ✅ CRITICAL: Navigate IMMEDIATELY - no delay
+        console.log('🎮 Executing IMMEDIATE navigation...');
+        window.location.href = redirectUrl;
     }
 
     backToLobby() {
@@ -710,17 +656,8 @@ class RaceSelection {
         }
 
         if (confirm('Möchtest du wirklich zur Lobby zurückkehren? Deine Rassenauswahl geht verloren.')) {
-            // ✅ IMPORTANT: Mark as intentional navigation
             this.isNavigating = true;
-            
-            // Remove event listeners
-            if (this.beforeUnloadHandler) {
-                window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-            }
-            if (this.visibilityChangeHandler) {
-                document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
-            }
-            
+            this.cleanup();
             window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
         }
     }
@@ -770,28 +707,33 @@ class RaceSelection {
         }
     }
 
-    // ✅ NEW: Cleanup method
+    // ✅ CRITICAL: Improved cleanup method
     cleanup() {
         console.log('🧹 Starting race selection cleanup...');
         
-        this.isNavigating = true; // Prevent any further leave events
+        this.isNavigating = true;
+        this.navigationInProgress = true;
         
-        if (this.beforeUnloadHandler) {
-            window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-            console.log('✅ Removed beforeunload handler');
-        }
-        if (this.visibilityChangeHandler) {
-            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
-            console.log('✅ Removed visibility handler');
-        }
-        if (this.navigationTimeout) {
-            clearTimeout(this.navigationTimeout);
-            console.log('✅ Cleared navigation timeout');
-        }
-        if (this.socket) {
-            this.socket.removeAllListeners();
-            this.socket.disconnect();
-            console.log('✅ Disconnected socket');
+        try {
+            if (this.beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+                this.beforeUnloadHandler = null;
+                console.log('✅ Removed beforeunload handler');
+            }
+            
+            if (this.visibilityChangeHandler) {
+                document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+                this.visibilityChangeHandler = null;
+                console.log('✅ Removed visibility handler');
+            }
+            
+            if (this.socket) {
+                this.socket.removeAllListeners();
+                this.socket.disconnect();
+                console.log('✅ Disconnected socket');
+            }
+        } catch (error) {
+            console.error('Error during cleanup:', error);
         }
         
         console.log('✅ Race selection cleanup completed');
@@ -805,6 +747,7 @@ class RaceSelection {
         console.log('Has Confirmed:', this.hasConfirmed);
         console.log('Is Navigating:', this.isNavigating);
         console.log('Is Map Generating:', this.isMapGenerating);
+        console.log('Navigation In Progress:', this.navigationInProgress);
         console.log('Has Received Map Complete:', this.hasReceivedMapComplete);
         console.log('Available Races:', this.availableRaces.length);
         console.log('Game Data:', this.gameData);
@@ -819,13 +762,12 @@ let raceSelection;
 document.addEventListener('DOMContentLoaded', () => {
     raceSelection = new RaceSelection();
     
-    // Make debug function globally available
     window.debugRaceSelection = () => raceSelection.debugStatus();
     console.log('🐛 Debug function available: debugRaceSelection()');
     
     // ✅ CRITICAL: Cleanup on page unload
     window.addEventListener('beforeunload', () => {
-        if (raceSelection && raceSelection.cleanup) {
+        if (raceSelection && typeof raceSelection.cleanup === 'function') {
             raceSelection.cleanup();
         }
     });
