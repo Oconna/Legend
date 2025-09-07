@@ -226,7 +226,7 @@ module.exports = (io) => {
             }
         });
 
-        // ✅ CRITICAL: Improved race confirmation handling
+// ✅ FIXED: Verbesserter race confirmation handler
 socket.on('confirm-race', async (data) => {
     try {
         const { gameId, playerName } = data;
@@ -265,7 +265,7 @@ socket.on('confirm-race', async (data) => {
                     console.log(`🗺️ Map generation attempt ${attempts}/${maxAttempts} for game ${gameId}`);
                     
                     try {
-                        await mapController.generateMap(gameId, mapWidth, mapHeight, gameState.players.length);
+                        await generateMapWithRetry(gameId, width, height, gameState.players);
                         
                         // Verify map was created
                         const mapTiles = await db.maps.findByGame(gameId);
