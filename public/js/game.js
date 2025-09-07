@@ -1527,11 +1527,6 @@ showMapPlaceholder() {
         return this.players.find(p => p.player_name === playerName);
     }
 
-    getPlayerName(playerId) {
-        const player = this.getPlayer(playerId);
-        return player ? player.player_name : 'Unbekannt';
-    }
-
     getTerrainName(terrainId) {
         const names = {
             1: 'Grasland',
