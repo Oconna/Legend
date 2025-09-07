@@ -34,72 +34,101 @@ class GameController {
     }
 
     // ✅ IMPROVED: Multiple methods to get player name
-    getPlayerName() {
-        // 1. Try URL parameter
-        let playerName = Utils.getUrlParameter('player');
-        console.log('🔍 Player name from URL:', playerName);
-        
-        // 2. Try localStorage
-        if (!playerName) {
-            playerName = Utils.getFromStorage('playerName');
-            console.log('🔍 Player name from storage:', playerName);
-        }
-        
-        // 3. Try sessionStorage
-        if (!playerName) {
-            try {
-                playerName = sessionStorage.getItem('playerName');
-                console.log('🔍 Player name from session:', playerName);
-            } catch (e) {
-                console.log('Session storage not available');
-            }
-        }
-        
-        // 4. Last resort - extract from current page path (for race selection redirects)
-        if (!playerName) {
-            const urlParams = new URLSearchParams(window.location.search);
-            playerName = urlParams.get('player') || urlParams.get('playerName');
-            console.log('🔍 Player name from search params:', playerName);
-        }
-        
-        if (!playerName) {
-            console.error('❌ No player name found anywhere!');
-            Utils.showError('Spielername nicht gefunden. Kehre zur Startseite zurück.');
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 3000);
-        }
-        
-        return playerName;
+getPlayerName() {
+    // 1. Try URL parameter
+    let playerName = Utils.getUrlParameter('player');
+    console.log('🔍 Player name from URL:', playerName);
+    
+    // 2. Try localStorage
+    if (!playerName) {
+        playerName = Utils.getFromStorage('playerName');
+        console.log('🔍 Player name from storage:', playerName);
     }
+    
+    // 3. Try sessionStorage
+    if (!playerName) {
+        try {
+            playerName = sessionStorage.getItem('playerName');
+            console.log('🔍 Player name from session:', playerName);
+        } catch (e) {
+            console.log('Session storage not available');
+        }
+    }
+    
+    // 4. Last resort - extract from current page path (for race selection redirects)
+    if (!playerName) {
+        const urlParams = new URLSearchParams(window.location.search);
+        playerName = urlParams.get('player') || urlParams.get('playerName');
+        console.log('🔍 Player name from search params:', playerName);
+    }
+    
+    if (!playerName) {
+        console.error('❌ No player name found anywhere!');
+        Utils.showError('Spielername nicht gefunden. Kehre zur Startseite zurück.');
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 2000);
+        return null;
+    }
+    
+    // Decode URL encoding if present
+    try {
+        playerName = decodeURIComponent(playerName);
+    } catch (e) {
+        console.log('Player name was not URL encoded');
+    }
+    
+    console.log('✅ Final player name:', playerName);
+    return playerName;
+}
 
     async init() {
+        // ✅ IMPROVED: Better validation
+        if (!this.gameId) {
+            Utils.showError('Keine Spiel-ID gefunden');
+            setTimeout(() => {
+                this.isNavigating = true;
+                window.location.href = '/';
+            }, 2000);
+            return;
+        }
+
+        if (!this.playerName) {
+            Utils.showError('Kein Spielername gefunden');
+            setTimeout(() => {
+                this.isNavigating = true;
+                window.location.href = `/lobby/${this.gameId}`;
+            }, 2000);
+            return;
+        }
+
+        console.log(`🎮 Initializing game ${this.gameId} for player ${this.playerName}`);
+
         try {
-            console.log('🎮 Initializing Game Controller...');
-            console.log(`🎮 Game ID: ${this.gameId}`);
-            console.log(`👤 Player Name: ${this.playerName}`);
-            
-            if (!this.gameId || !this.playerName) {
-                throw new Error('Game ID oder Spielername fehlt');
-            }
-            
-            // Initialize components first
+            // Initialize components
             this.initializeComponents();
             
-            // Bind events
+            // Setup event handlers
             this.bindEvents();
+            this.setupSocketHandlers();
             
-            // Set up event handlers
-            this.setupEventHandlers();
-            
-            // Start loading sequence
-            await this.startLoadSequence();
+            // ✅ WAIT FOR SOCKET CONNECTION
+            if (this.socket.connected) {
+                await this.startLoadSequence();
+            } else {
+                this.socket.on('connect', async () => {
+                    console.log('✅ Socket connected, starting load sequence');
+                    await this.startLoadSequence();
+                });
+            }
             
         } catch (error) {
             console.error('❌ Error initializing game:', error);
-            Utils.showError('Fehler beim Initialisieren des Spiels: ' + error.message);
+            Utils.showError('Fehler beim Laden des Spiels: ' + error.message);
+            
             setTimeout(() => {
-                window.location.href = '/';
+                this.isNavigating = true;
+                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
             }, 3000);
         }
     }
@@ -158,213 +187,278 @@ class GameController {
         if (confirmUpgrade) confirmUpgrade.addEventListener('click', () => this.confirmUpgrade());
         if (confirmAttack) confirmAttack.addEventListener('click', () => this.confirmAttack());
 
-        // Close modal buttons
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('close-modal') || e.target.classList.contains('modal-overlay')) {
-                this.closeModals();
-            }
-        });
-
         // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.clearSelection();
-                this.closeModals();
+        document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+
+        // Page visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this.isGameLoaded) {
+                this.refreshGameState();
             }
         });
-    }
-
-    setupEventHandlers() {
-        // Socket events
-        this.socket.on('connect', () => {
-            console.log('🔌 Connected to server');
-        });
-
-        this.socket.on('disconnect', () => {
-            console.log('❌ Disconnected from server');
-        });
-
-        this.socket.on('game-state-update', (gameState) => {
-            console.log('📡 Game state update received:', gameState);
-            this.handleGameStateUpdate(gameState);
-        });
-
-        this.socket.on('turn-update', (data) => {
-            console.log('🔄 Turn update received:', data);
-            this.handleTurnUpdate(data);
-        });
-
-        this.socket.on('unit-moved', (data) => {
-            console.log('👣 Unit moved:', data);
-            this.handleUnitMoved(data);
-        });
-
-        this.socket.on('unit-attacked', (data) => {
-            console.log('⚔️ Unit attacked:', data);
-            this.handleUnitAttacked(data);
-        });
-
-        this.socket.on('unit-purchased', (data) => {
-            console.log('💰 Unit purchased:', data);
-            this.handleUnitPurchased(data);
-        });
-
-        this.socket.on('tier-upgraded', (data) => {
-            console.log('📈 Tier upgraded:', data);
-            this.handleTierUpgraded(data);
-        });
-
-        this.socket.on('player-eliminated', (data) => {
-            console.log('💀 Player eliminated:', data);
-            this.handlePlayerEliminated(data);
-        });
-
-        this.socket.on('game-won', (data) => {
-            console.log('🏆 Game won:', data);
-            this.handleGameWon(data);
-        });
-
-        // Prevent accidental page unload
+        
+        // ✅ IMPROVED: Better beforeunload handling
         this.beforeUnloadHandler = (e) => {
-            if (this.isGameLoaded && !this.isNavigating) {
-                const message = 'Das Spiel ist noch aktiv. Möchtest du wirklich die Seite verlassen?';
-                e.preventDefault();
-                e.returnValue = message;
-                return message;
+            console.log('🚨 beforeunload event triggered in game', {
+                isNavigating: this.isNavigating,
+                isGameLoaded: this.isGameLoaded
+            });
+            
+            // Only emit leave-game if not intentionally navigating
+            if (!this.isNavigating && this.isGameLoaded) {
+                console.log('🚨 Emitting leave-game due to page unload');
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
+            } else {
+                console.log('✅ Allowing navigation - intentional or game not loaded');
             }
         };
         
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
-
-        // Handle visibility change
+        
+        // ✅ NEW: Additional cleanup on page hide
         this.visibilityChangeHandler = () => {
-            if (!document.hidden && this.isGameLoaded) {
-                console.log('👁️ Page visible again, refreshing game state...');
-                this.refreshGameState();
+            if (document.visibilityState === 'hidden' && !this.isNavigating && this.isGameLoaded) {
+                console.log('🚨 Page hidden - emitting leave-game');
+                this.socket.emit('leave-game', {
+                    gameId: this.gameId,
+                    playerName: this.playerName
+                });
             }
         };
         
         document.addEventListener('visibilitychange', this.visibilityChangeHandler);
     }
 
-    joinGameRoom() {
-        this.socket.emit('join-game', {
-            gameId: this.gameId,
-            playerName: this.playerName
+    setupSocketHandlers() {
+        // Connection events
+        this.socket.on('connect', () => {
+            console.log('🔌 Socket connected');
+            if (this.gameId && this.playerName && this.isGameLoaded) {
+                this.joinGameRoom();
+            }
+        });
+
+        this.socket.on('disconnect', (reason) => {
+            console.log('🔌 Socket disconnected:', reason);
+            if (reason !== 'io client disconnect' && !this.isNavigating) {
+                Utils.showError('Verbindung zum Server verloren');
+            }
+        });
+
+        // Game events
+        this.socket.on('game-state-update', (gameState) => {
+            this.handleGameStateUpdate(gameState);
+        });
+
+        this.socket.on('turn-changed', (data) => {
+            this.handleTurnChange(data);
+        });
+
+        this.socket.on('unit-moved', (data) => {
+            this.handleUnitMoved(data);
+        });
+
+        this.socket.on('unit-attacked', (data) => {
+            this.handleUnitAttacked(data);
+        });
+
+        this.socket.on('unit-purchased', (data) => {
+            this.handleUnitPurchased(data);
+        });
+
+        this.socket.on('player-eliminated', (data) => {
+            this.handlePlayerEliminated(data);
+        });
+
+        this.socket.on('game-ended', (data) => {
+            this.handleGameEnded(data);
+        });
+
+        this.socket.on('error', (error) => {
+            Utils.showError(error.message || 'Ein Fehler ist aufgetreten');
         });
     }
 
-    // ✅ FIXED: Properly structured loadGameData method
-    async loadGameData() {
-        try {
-            console.log(`📋 Loading game data for game ${this.gameId}...`);
-            
-            // ✅ STEP 1: Get game data
-            console.log('📝 Step 1: Fetching game data...');
-            this.gameData = await Utils.get(`/api/games/${this.gameId}/status`);
-            
-            if (!this.gameData) {
-                throw new Error('Spieldaten konnten nicht geladen werden');
-            }
-            
-            console.log('✅ Game data loaded:', this.gameData);
-            
-            // ✅ STEP 2: Get players
-            console.log('📝 Step 2: Fetching players...');
-            this.players = await Utils.get(`/api/games/${this.gameId}/players`);
-            
-            if (!Array.isArray(this.players) || this.players.length === 0) {
-                throw new Error('Keine Spieler im Spiel gefunden');
-            }
-            
-            console.log('✅ Players loaded:', this.players);
-            
-            // ✅ STEP 3: Find current player
-            console.log('📝 Step 3: Finding current player...');
-            const currentPlayer = this.players.find(p => p.player_name === this.playerName);
-            
-            if (!currentPlayer) {
-                console.log('❌ Player not found in game');
-                console.log('Looking for:', this.playerName);
-                console.log('Available players:', this.players.map(p => p.player_name));
-                
-                // Try to find similar players (case insensitive)
-                const similarPlayers = this.players.filter(p => 
-                    p.player_name.toLowerCase() === this.playerName.toLowerCase()
-                );
-                
-                if (similarPlayers.length > 0) {
-                    console.log(`📝 Found similar players: ${similarPlayers.map(p => p.player_name).join(', ')}`);
-                } else {
-                    throw new Error('Du bist nicht in diesem Spiel. Kehre zur Lobby zurück.');
-                }
-            }
-            
-            console.log('✅ Current player found:', currentPlayer);
-            
-            // ✅ STEP 4: Set player data
-            console.log('📝 Step 4: Setting player data...');
-            this.currentPlayerId = currentPlayer.id;
-            this.playerGold = currentPlayer.gold || 0;
-            this.playerTier = currentPlayer.tier_level || 1;
-            this.currentTurn = this.gameData.current_turn || 1;
-            this.currentPlayerTurn = this.gameData.current_player_turn;
-
-            console.log('✅ Player data set:', {
-                currentPlayerId: this.currentPlayerId,
-                playerGold: this.playerGold,
-                playerTier: this.playerTier,
-                currentTurn: this.currentTurn,
-                currentPlayerTurn: this.currentPlayerTurn
-            });
-
-            console.log('✅ Game data loaded successfully:', {
-                gameStatus: this.gameData.status,
-                playerCount: this.players.length,
-                currentPlayerId: this.currentPlayerId,
-                playerGold: this.playerGold,
-                currentPlayer: currentPlayer.player_name
-            });
-
-            // ✅ STEP 5: Load map data
-            console.log('📝 Step 5: Loading map data...');
-            await this.loadMapData();
-            
-            // ✅ STEP 6: Load units
-            console.log('📝 Step 6: Loading units data...');
-            await this.loadUnitsData();
-            
-            // ✅ STEP 7: Load available units for purchase
-            if (currentPlayer.race_id) {
-                console.log('📝 Step 7: Loading available units for race:', currentPlayer.race_id);
-                await this.units.loadAvailableUnits(currentPlayer.race_id);
-            }
-
-            // ✅ STEP 8: Update UI
-            console.log('📝 Step 8: Updating game UI...');
-            this.updateGameUI();
-            
-            console.log('✅ All game data loaded successfully');
-            
-        } catch (error) {
-            console.error('❌ Error loading game data:', error);
-            console.error('❌ Error stack:', error.stack);
-            
-            // Show user-friendly error message
-            if (error.message.includes('nicht in diesem Spiel')) {
-                Utils.showError('Du bist nicht mehr in diesem Spiel. Weiterleitung zur Startseite...');
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 3000);
-            } else {
-                Utils.showError('Fehler beim Laden der Spieldaten: ' + error.message);
-            }
-            
-            throw error;
+    // ✅ CRITICAL FIX: Completely rewritten loadGameData method
+async loadGameData() {
+    try {
+        console.log('📝 Starting loadGameData...');
+        console.log('📝 Game ID:', this.gameId);
+        console.log('📝 Player Name:', this.playerName);
+        
+        if (!this.gameId) {
+            throw new Error('Keine Spiel-ID gefunden');
         }
+        
+        if (!this.playerName) {
+            throw new Error('Kein Spielername gefunden');
+        }
+        
+        // ✅ STEP 1: Load basic game info with detailed logging
+        console.log('📝 Step 1: Loading game data from API...');
+        const gameData = await Utils.get(`/api/games/${this.gameId}`);
+        
+        console.log('📝 Raw API response:', gameData);
+        
+        if (!gameData) {
+            throw new Error('Keine Antwort vom Server erhalten');
+        }
+        
+        if (!gameData.game) {
+            console.error('❌ Game object missing in response:', gameData);
+            throw new Error('Spieldaten unvollständig - game Objekt fehlt');
+        }
+        
+        if (!gameData.players) {
+            console.error('❌ Players array missing in response:', gameData);
+            throw new Error('Spieldaten unvollständig - players Array fehlt');
+        }
+
+        console.log('✅ Game basic data loaded:', gameData.game);
+        console.log('✅ Players data loaded:', gameData.players);
+
+        // ✅ STEP 2: Validate game status
+        console.log('📝 Step 2: Validating game status...');
+        if (gameData.game.status !== 'playing') {
+            console.warn(`Game status is ${gameData.game.status}, redirecting to appropriate page`);
+            
+            if (gameData.game.status === 'race_selection') {
+                this.isNavigating = true;
+                window.location.href = `/race-selection/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            } else if (gameData.game.status === 'lobby') {
+                this.isNavigating = true;
+                window.location.href = `/lobby/${this.gameId}?player=${encodeURIComponent(this.playerName)}`;
+            } else {
+                throw new Error(`Unbekannter Spielstatus: ${gameData.game.status}`);
+            }
+            return;
+        }
+
+        // ✅ STEP 3: Enhanced player validation with debugging
+        console.log('📝 Step 3: Validating player access...');
+        this.gameData = gameData.game;
+        this.players = gameData.players || [];
+        
+        if (!Array.isArray(this.players)) {
+            console.error('❌ Players data is not an array:', this.players);
+            throw new Error('Spielerdaten sind fehlerhaft');
+        }
+        
+        console.log('🔍 Available players in game:');
+        this.players.forEach((player, index) => {
+            console.log(`  ${index}: "${player.player_name}" (ID: ${player.id})`);
+        });
+        
+        console.log('🔍 Looking for player:', `"${this.playerName}"`);
+        console.log('🔍 Player name length:', this.playerName.length);
+        console.log('🔍 Player name character codes:', [...this.playerName].map(c => c.charCodeAt(0)));
+        
+        // ✅ ENHANCED: More flexible player matching
+        let currentPlayer = this.players.find(p => p.player_name === this.playerName);
+        
+        // If exact match fails, try trimmed comparison
+        if (!currentPlayer) {
+            console.log('🔍 Exact match failed, trying trimmed comparison...');
+            currentPlayer = this.players.find(p => 
+                p.player_name.trim() === this.playerName.trim()
+            );
+        }
+        
+        // If still no match, try case-insensitive comparison
+        if (!currentPlayer) {
+            console.log('🔍 Trimmed match failed, trying case-insensitive comparison...');
+            currentPlayer = this.players.find(p => 
+                p.player_name.toLowerCase().trim() === this.playerName.toLowerCase().trim()
+            );
+        }
+        
+        // If still no match, show detailed error
+        if (!currentPlayer) {
+            console.error('❌ Current player not found in game players list');
+            console.error('❌ Available players:', this.players.map(p => `"${p.player_name}"`));
+            console.error('❌ Looking for player:', `"${this.playerName}"`);
+            
+            // Try to find similar player names
+            const similarPlayers = this.players.filter(p => 
+                p.player_name.toLowerCase().includes(this.playerName.toLowerCase()) ||
+                this.playerName.toLowerCase().includes(p.player_name.toLowerCase())
+            );
+            
+            if (similarPlayers.length > 0) {
+                console.error('❌ Similar players found:', similarPlayers.map(p => p.player_name));
+                throw new Error(`Spieler nicht gefunden. Ähnliche Spieler: ${similarPlayers.map(p => p.player_name).join(', ')}`);
+            } else {
+                throw new Error('Du bist nicht in diesem Spiel. Kehre zur Lobby zurück.');
+            }
+        }
+        
+        console.log('✅ Current player found:', currentPlayer);
+        
+        // ✅ STEP 4: Set player data
+        console.log('📝 Step 4: Setting player data...');
+        this.currentPlayerId = currentPlayer.id;
+        this.playerGold = currentPlayer.gold || 0;
+        this.playerTier = currentPlayer.tier_level || 1;
+        this.currentTurn = this.gameData.current_turn || 1;
+        this.currentPlayerTurn = this.gameData.current_player_turn;
+
+        console.log('✅ Player data set:', {
+            currentPlayerId: this.currentPlayerId,
+            playerGold: this.playerGold,
+            playerTier: this.playerTier,
+            currentTurn: this.currentTurn,
+            currentPlayerTurn: this.currentPlayerTurn
+        });
+
+        console.log('✅ Game data loaded successfully:', {
+            gameStatus: this.gameData.status,
+            playerCount: this.players.length,
+            currentPlayerId: this.currentPlayerId,
+            playerGold: this.playerGold,
+            currentPlayer: currentPlayer.player_name
+        });
+
+        // ✅ STEP 5: Load map data
+        console.log('📝 Step 5: Loading map data...');
+        await this.loadMapData();
+        
+        // ✅ STEP 6: Load units
+        console.log('📝 Step 6: Loading units data...');
+        await this.loadUnitsData();
+        
+        // ✅ STEP 7: Load available units for purchase
+        if (currentPlayer.race_id) {
+            console.log('📝 Step 7: Loading available units for race:', currentPlayer.race_id);
+            await this.units.loadAvailableUnits(currentPlayer.race_id);
+        }
+
+        // ✅ STEP 8: Update UI
+        console.log('📝 Step 8: Updating game UI...');
+        this.updateGameUI();
+        
+        console.log('✅ All game data loaded successfully');
+        
+    } catch (error) {
+        console.error('❌ Error loading game data:', error);
+        console.error('❌ Error stack:', error.stack);
+        
+        // Show user-friendly error message
+        if (error.message.includes('nicht in diesem Spiel')) {
+            Utils.showError('Du bist nicht mehr in diesem Spiel. Weiterleitung zur Startseite...');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+        } else {
+            Utils.showError('Fehler beim Laden der Spieldaten: ' + error.message);
+        }
+        
+        throw error;
     }
 
-    // ✅ FIXED: Properly structured loadMapData method
+    // ✅ CRITICAL FIX: Improved map loading with better error handling
     async loadMapData() {
         try {
             console.log(`🗺️ Loading map data for game ${this.gameId}...`);
@@ -438,741 +532,941 @@ class GameController {
         }
     }
 
-    // ✅ FIXED: Properly structured loadUnitsData method
-    async loadUnitsData() {
-        try {
-            console.log(`🔍 Loading units data for game ${this.gameId}...`);
-            
-            // ✅ Add retry logic for units as well
-            let unitsData = null;
-            let retries = 0;
-            const maxRetries = 3;
-            
-            while (retries < maxRetries) {
-                try {
-                    unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
-                    console.log(`✅ Units data received:`, unitsData);
-                    break;
-                } catch (error) {
-                    console.error(`❌ Units loading attempt ${retries + 1} failed:`, error);
-                    retries++;
-                    
-                    if (retries < maxRetries) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
+    // ✅ CRITICAL FIX: Improved units loading with better error handling
+async loadUnitsData() {
+    try {
+        console.log(`🔍 Loading units data for game ${this.gameId}...`);
+        
+        // ✅ Add retry logic for units as well
+        let unitsData = null;
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (retries < maxRetries) {
+            try {
+                unitsData = await Utils.get(`/api/games/${this.gameId}/units`);
+                console.log(`✅ Units data received:`, unitsData);
+                break;
+            } catch (error) {
+                console.error(`❌ Units loading attempt ${retries + 1} failed:`, error);
+                retries++;
+                
+                if (retries < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
+        }
+        
+        if (!unitsData) {
+            console.warn('⚠️ No units data received after retries');
+            unitsData = [];
+        }
+        
+        if (Array.isArray(unitsData)) {
+            console.log(`📋 Processing ${unitsData.length} units...`);
+            await this.units.loadUnits(unitsData);
             
-            if (!unitsData) {
-                console.warn('⚠️ No units data received after retries');
-                unitsData = [];
+            // ✅ CRITICAL: Update map with units after loading
+            if (this.map && typeof this.map.updateUnits === 'function') {
+                this.map.updateUnits(unitsData);
+                console.log('✅ Map updated with units');
             }
             
-            if (Array.isArray(unitsData)) {
-                console.log(`📋 Processing ${unitsData.length} units...`);
-                await this.units.loadUnits(unitsData);
-                
-                // ✅ CRITICAL: Update map with units after loading
-                if (this.map && typeof this.map.updateUnits === 'function') {
-                    this.map.updateUnits(unitsData);
-                    console.log('✅ Map updated with units');
-                }
-                
-                console.log(`✅ Loaded ${unitsData.length} units successfully`);
-                return unitsData;
-                
-            } else {
-                console.warn('⚠️ Units data is not an array:', unitsData);
-                await this.units.loadUnits([]);
-                return [];
-            }
+            console.log(`✅ Loaded ${unitsData.length} units successfully`);
+            return unitsData;
             
-        } catch (error) {
-            console.error('❌ Error loading units:', error);
-            
-            // ✅ IMPROVED: Don't fail on units error, just use empty array
+        } else {
+            console.warn('⚠️ Units data is not an array:', unitsData);
             await this.units.loadUnits([]);
-            Utils.showError('Einheiten konnten nicht geladen werden.');
             return [];
         }
+        
+    } catch (error) {
+        console.error('❌ Error loading units:', error);
+        
+        // ✅ IMPROVED: Don't fail on units error, just use empty array
+        await this.units.loadUnits([]);
+        Utils.showError('Einheiten konnten nicht geladen werden.');
+        return [];
     }
+}
 
     // ✅ IMPROVED: Better placeholder map for development
-    showMapPlaceholder() {
-        try {
-            console.log('🎨 Creating enhanced placeholder map...');
-            
-            const placeholderMap = [];
-            const size = 25; // Slightly larger for better testing
-            
-            // ✅ Create more realistic terrain distribution
-            for (let y = 0; y < size; y++) {
-                for (let x = 0; x < size; x++) {
-                    let terrainType = 1; // Default grass
-                    
-                    // Create terrain patterns for more natural look
-                    if (y < 3 || y > size - 4) {
-                        // Top and bottom borders - more mountains
-                        terrainType = Math.random() < 0.3 ? 2 : 1;
-                    } else if (x < 3 || x > size - 4) {
-                        // Left and right borders - mix of terrains
-                        terrainType = Math.random() < 0.2 ? 2 : 1;
-                    } else {
-                        // Center area - varied terrain
-                        const rand = Math.random();
-                        if (rand < 0.6) terrainType = 1;      // Grass
-                        else if (rand < 0.7) terrainType = 5; // Forest
-                        else if (rand < 0.8) terrainType = 4; // Water
-                        else if (rand < 0.9) terrainType = 2; // Mountain
-                        else terrainType = 3;                 // Swamp
-                    }
-                    
-                    placeholderMap.push({
-                        id: y * size + x + 1,
-                        game_id: this.gameId,
-                        x_pos: x,
-                        y_pos: y,
-                        terrain_type_id: terrainType,
-                        building_type_id: null,
-                        building_owner_id: null
-                    });
+showMapPlaceholder() {
+    try {
+        console.log('🎨 Creating enhanced placeholder map...');
+        
+        const placeholderMap = [];
+        const size = 25; // Slightly larger for better testing
+        
+        // ✅ Create more realistic terrain distribution
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                let terrainType = 1; // Default grass
+                
+                // Create terrain patterns for more natural look
+                if (y < 3 || y > size - 4) {
+                    // Top and bottom borders - more mountains
+                    terrainType = Math.random() < 0.3 ? 2 : 1;
+                } else if (x < 3 || x > size - 4) {
+                    // Left and right borders - mixed terrain
+                    terrainType = Math.random() < 0.2 ? 2 : (Math.random() < 0.1 ? 5 : 1);
+                } else {
+                    // Interior - varied terrain
+                    const rand = Math.random();
+                    if (rand < 0.1) terrainType = 2; // Mountain
+                    else if (rand < 0.15) terrainType = 3; // Swamp
+                    else if (rand < 0.25) terrainType = 4; // Water
+                    else if (rand < 0.35) terrainType = 5; // Forest
+                    else if (rand < 0.4) terrainType = 6; // Desert
+                    else terrainType = 1; // Grass
                 }
-            }
-            
-            // Add some buildings for testing
-            const playerBuildings = [
-                { x: 5, y: 5, type: 1, owner: this.currentPlayerId },   // Village
-                { x: 15, y: 15, type: 2, owner: this.currentPlayerId }, // Castle
-                { x: 10, y: 20, type: 1, owner: null }                  // Neutral village
-            ];
-            
-            playerBuildings.forEach(building => {
-                const tile = placeholderMap.find(t => t.x_pos === building.x && t.y_pos === building.y);
-                if (tile) {
-                    tile.building_type_id = building.type;
-                    tile.building_owner_id = building.owner;
+                
+                // ✅ Add strategic buildings for both players
+                let buildingType = null;
+                let buildingOwner = null;
+                
+                // Player 1 buildings (top-left quadrant)
+                if ((x === 5 && y === 5) || (x === 8 && y === 3) || (x === 3 && y === 8)) {
+                    buildingType = x === 5 && y === 5 ? 2 : 1; // Castle or Village
+                    buildingOwner = this.currentPlayerId;
                 }
-            });
-            
-            // Load placeholder map
-            if (this.map) {
-                this.map.loadMap(placeholderMap);
-                console.log('✅ Placeholder map loaded successfully');
-            }
-            
-            return placeholderMap;
-            
-        } catch (error) {
-            console.error('❌ Error creating placeholder map:', error);
-            return [];
-        }
-    }
-
-    // Event Handlers
-    handleGameStateUpdate(gameState) {
-        if (gameState.gameData) {
-            this.gameData = gameState.gameData;
-            this.currentTurn = gameState.gameData.current_turn;
-            this.currentPlayerTurn = gameState.gameData.current_player_turn;
-        }
-        
-        if (gameState.players) {
-            this.players = gameState.players;
-            const currentPlayer = this.players.find(p => p.player_name === this.playerName);
-            if (currentPlayer) {
-                this.playerGold = currentPlayer.gold;
-                this.playerTier = currentPlayer.tier_level;
+                
+                // Player 2 buildings (bottom-right quadrant) 
+                if ((x === size-6 && y === size-6) || (x === size-9 && y === size-4) || (x === size-4 && y === size-9)) {
+                    buildingType = x === size-6 && y === size-6 ? 2 : 1; // Castle or Village
+                    // Find second player if available
+                    const secondPlayer = this.players.find(p => p.id !== this.currentPlayerId);
+                    buildingOwner = secondPlayer ? secondPlayer.id : this.currentPlayerId;
+                }
+                
+                placeholderMap.push({
+                    x_pos: x,
+                    y_pos: y,
+                    terrain_type_id: terrainType,
+                    building_type_id: buildingType,
+                    building_owner_id: buildingOwner,
+                    // Add placeholder terrain names for better debugging
+                    terrain_name: this.getTerrainName(terrainType),
+                    building_name: buildingType ? this.getBuildingName(buildingType) : null
+                });
             }
         }
         
-        this.updateGameUI();
-    }
-
-    handleTurnUpdate(data) {
-        this.currentTurn = data.currentTurn;
-        this.currentPlayerTurn = data.currentPlayerTurn;
+        console.log(`🎨 Generated placeholder map with ${placeholderMap.length} tiles`);
         
-        // Give income if it's the player's turn
-        if (this.isMyTurn() && data.newIncome) {
-            this.playerGold += data.newIncome;
-            Utils.showSuccess(`Neue Runde! Du erhältst ${data.newIncome} Gold.`);
-        }
-        
-        this.updateGameUI();
-    }
-
-    handleUnitMoved(data) {
-        // Update unit position
-        const unit = this.units.units.find(u => u.id === data.unitId);
-        if (unit) {
-            unit.x_pos = data.newX;
-            unit.y_pos = data.newY;
-            unit.movement_left = data.movementLeft;
-        }
-        
-        // Update map
-        if (this.map) {
-            this.map.updateUnits(this.units.units);
-        }
-        
-        this.units.clearSelection();
-    }
-
-    handleUnitAttacked(data) {
-        const { attackerId, defenderId, damage, defenderDestroyed } = data;
-        
-        // Update defender
-        const defender = this.units.units.find(u => u.id === defenderId);
-        if (defender) {
-            if (defenderDestroyed) {
-                // Remove from units array
-                this.units.units = this.units.units.filter(u => u.id !== defenderId);
-                Utils.showInfo(`Einheit zerstört!`);
-            } else {
-                defender.current_health -= damage;
-                Utils.showInfo(`${damage} Schaden verursacht!`);
-            }
-        }
-        
-        // Update attacker movement
-        const attacker = this.units.units.find(u => u.id === attackerId);
-        if (attacker) {
-            attacker.movement_left = 0; // Attacking ends turn for unit
-        }
-        
-        // Update map
-        if (this.map) {
-            this.map.updateUnits(this.units.units);
-        }
-        
-        this.units.clearSelection();
-        this.closeModals();
-    }
-
-    handleUnitPurchased(data) {
-        const { unit, newGold } = data;
-        
-        // Add unit to array
-        this.units.units.push(unit);
-        
-        // Update player gold
-        this.playerGold = newGold;
-        
-        // Update map
-        if (this.map) {
-            this.map.updateUnits(this.units.units);
-        }
-        
-        this.updateGameUI();
-        Utils.showSuccess(`Einheit gekauft: ${unit.name}`);
-    }
-
-    handleTierUpgraded(data) {
-        const { newTier, newGold } = data;
-        
-        this.playerTier = newTier;
-        this.playerGold = newGold;
-        
-        this.updateGameUI();
-        this.closeModals();
-        
-        Utils.showSuccess(`Stufe ${newTier} erreicht! Neue Einheiten sind stärker.`);
-    }
-
-    handlePlayerEliminated(data) {
-        const { playerName } = data;
-        Utils.showInfo(`${playerName} wurde eliminiert!`);
-        
-        // Remove player from list or mark as eliminated
-        const player = this.players.find(p => p.player_name === playerName);
-        if (player) {
-            player.eliminated = true;
-        }
-        
-        this.updateGameUI();
-    }
-
-    handleGameWon(data) {
-        const { winnerName } = data;
-        
-        if (winnerName === this.playerName) {
-            Utils.showSuccess(`🎉 Glückwunsch! Du hast gewonnen!`);
-        } else {
-            Utils.showInfo(`${winnerName} hat das Spiel gewonnen.`);
-        }
-        
-        // Disable game interactions
-        this.isGameLoaded = false;
-        
-        // Show victory/defeat modal or redirect
-        setTimeout(() => {
-            if (confirm('Spiel beendet. Zurück zur Startseite?')) {
-                window.location.href = '/';
-            }
-        }, 3000);
-    }
-
-    // Game Actions
-    setAction(action) {
-        this.selectedAction = action;
-        this.units.clearSelection();
-        
-        // Update UI to show selected action
-        document.querySelectorAll('.action-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        const activeBtn = document.getElementById(`${action}${action === 'move' ? '-unit' : ''}-btn`);
-        if (activeBtn) {
-            activeBtn.classList.add('active');
-        }
-        
-        console.log(`Action set to: ${action}`);
-    }
-
-    async endTurn() {
-        if (!this.isMyTurn()) {
-            Utils.showError('Du bist nicht am Zug!');
+        // ✅ CRITICAL: Ensure map component exists before loading
+        if (!this.map) {
+            console.error('❌ Map component not available for placeholder');
             return;
         }
         
-        try {
-            const response = await this.emitWithAck('end-turn', {
+        // ✅ CRITICAL: Load placeholder map with current units
+        this.map.loadMap(placeholderMap, this.units ? this.units.units : []).then(() => {
+            console.log('✅ Placeholder map loaded successfully');
+            Utils.showInfo('Development-Karte geladen (Echte Karte wird im Hintergrund generiert)');
+        }).catch(error => {
+            console.error('❌ Error loading placeholder map:', error);
+            Utils.showError('Fehler beim Laden der Platzhalter-Karte');
+        });
+        
+    } catch (error) {
+        console.error('❌ Error creating placeholder map:', error);
+        Utils.showError('Fehler beim Erstellen der Platzhalter-Karte');
+    }
+}
+
+    joinGameRoom() {
+        if (this.socket.connected) {
+            console.log('🏠 Joining game room...');
+            this.socket.emit('join-game', {
                 gameId: this.gameId,
                 playerName: this.playerName
             });
-            
-            console.log('Turn ended successfully:', response);
-            this.clearSelection();
-            
-        } catch (error) {
-            console.error('Error ending turn:', error);
-            Utils.showError('Fehler beim Beenden des Zuges: ' + error.message);
-        }
-    }
-
-    // Map interaction
-    onTileSelected(tile) {
-        if (!tile || !this.isMyTurn()) return;
-        
-        const { x, y } = tile;
-        
-        switch (this.selectedAction) {
-            case 'move':
-                this.handleMoveAction(x, y);
-                break;
-            case 'attack':
-                this.handleAttackAction(x, y);
-                break;
-            case 'buy':
-                this.handleBuyAction(x, y);
-                break;
-            default:
-                this.handleTileClick(x, y);
-                break;
-        }
-    }
-
-    handleTileClick(x, y) {
-        // Try to select unit
-        const unit = this.units.getUnitAt(x, y);
-        if (unit && unit.player_id === this.currentPlayerId) {
-            this.units.selectUnit(x, y);
-            this.showTileInfo(x, y);
         } else {
-            this.units.clearSelection();
-            this.showTileInfo(x, y);
+            console.warn('⚠️ Socket not connected, cannot join room');
         }
-    }
-
-    handleMoveAction(x, y) {
-        if (!this.units.selectedUnit) {
-            // Select unit for movement
-            this.units.selectUnit(x, y);
-        } else {
-            // Move unit to target
-            this.moveUnit(this.units.selectedUnit.x_pos, this.units.selectedUnit.y_pos, x, y);
-        }
-    }
-
-    handleAttackAction(x, y) {
-        if (!this.units.selectedUnit) {
-            // Select unit for attack
-            this.units.selectUnit(x, y);
-        } else {
-            // Attack target
-            this.attackUnit(this.units.selectedUnit, x, y);
-        }
-    }
-
-    handleBuyAction(x, y) {
-        // Show purchase modal for this tile
-        this.showPurchaseModal(x, y);
-    }
-
-    async moveUnit(fromX, fromY, toX, toY) {
-        if (!this.units.canMoveToTile(toX, toY)) {
-            Utils.showError('Bewegung nicht möglich!');
-            return;
-        }
-        
-        try {
-            const response = await this.emitWithAck('move-unit', {
-                gameId: this.gameId,
-                playerName: this.playerName,
-                fromX,
-                fromY,
-                toX,
-                toY
-            });
-            
-            console.log('Unit moved successfully:', response);
-            
-        } catch (error) {
-            console.error('Error moving unit:', error);
-            Utils.showError('Fehler beim Bewegen der Einheit: ' + error.message);
-        }
-    }
-
-    attackUnit(attacker, targetX, targetY) {
-        const target = this.units.getUnitAt(targetX, targetY);
-        
-        if (!target) {
-            Utils.showError('Kein Ziel zum Angreifen gefunden!');
-            return;
-        }
-        
-        if (target.player_id === this.currentPlayerId) {
-            Utils.showError('Du kannst deine eigenen Einheiten nicht angreifen!');
-            return;
-        }
-        
-        if (!this.units.canAttackTile(targetX, targetY)) {
-            Utils.showError('Ziel ist nicht in Reichweite!');
-            return;
-        }
-        
-        // Show attack confirmation modal
-        this.showAttackModal(attacker, target);
     }
 
     // UI Updates
     updateGameUI() {
-        this.updatePlayerInfo();
-        this.updateTurnInfo();
-        this.updateActionButtons();
-    }
-
-    updatePlayerInfo() {
-        const goldElement = document.getElementById('player-gold');
-        const tierElement = document.getElementById('player-tier');
-        
-        if (goldElement) goldElement.textContent = this.playerGold;
-        if (tierElement) tierElement.textContent = this.playerTier;
-    }
-
-    updateTurnInfo() {
-        const turnElement = document.getElementById('current-turn');
-        const playerTurnElement = document.getElementById('current-player-turn');
-        const turnStatusElement = document.getElementById('turn-status');
-        
-        if (turnElement) turnElement.textContent = this.currentTurn;
-        if (playerTurnElement) {
-            const currentPlayer = this.players.find(p => p.player_order === this.currentPlayerTurn);
-            playerTurnElement.textContent = currentPlayer ? currentPlayer.player_name : 'Unbekannt';
+        try {
+            console.log('🎨 Updating game UI...');
+            this.updateGameHeader();
+            this.updatePlayersList();
+            this.updateActionButtons();
+            console.log('✅ Game UI updated successfully');
+        } catch (error) {
+            console.error('❌ Error updating game UI:', error);
         }
-        
-        if (turnStatusElement) {
-            if (this.isMyTurn()) {
-                turnStatusElement.textContent = 'Du bist am Zug!';
-                turnStatusElement.className = 'turn-status my-turn';
-            } else {
-                const currentPlayer = this.players.find(p => p.player_order === this.currentPlayerTurn);
-                turnStatusElement.textContent = `${currentPlayer?.player_name || 'Unbekannt'} ist am Zug`;
-                turnStatusElement.className = 'turn-status not-my-turn';
+    }
+
+    updateGameHeader() {
+        const gameNameEl = document.getElementById('game-name');
+        const currentTurnEl = document.getElementById('current-turn');
+        const currentPlayerNameEl = document.getElementById('current-player-name');
+        const currentPlayerGoldEl = document.getElementById('current-player-gold');
+        const currentPlayerAvatar = document.getElementById('current-player-avatar');
+
+        if (gameNameEl) gameNameEl.textContent = this.gameData?.name || 'Strategiespiel';
+        if (currentTurnEl) currentTurnEl.textContent = this.currentTurn;
+
+        // Current player info
+        const currentPlayer = this.getCurrentTurnPlayer();
+        if (currentPlayer) {
+            if (currentPlayerNameEl) {
+                const isMyTurn = currentPlayer.id === this.currentPlayerId;
+                currentPlayerNameEl.textContent = isMyTurn ? 'Du bist dran!' : currentPlayer.player_name;
+            }
+            
+            if (currentPlayerGoldEl) {
+                const gold = currentPlayer.id === this.currentPlayerId ? this.playerGold : (currentPlayer.gold || 0);
+                currentPlayerGoldEl.textContent = `💰 ${gold}`;
+            }
+
+            if (currentPlayerAvatar) {
+                currentPlayerAvatar.textContent = currentPlayer.player_name.charAt(0).toUpperCase();
+                currentPlayerAvatar.style.backgroundColor = this.map.getPlayerColor(currentPlayer.id);
             }
         }
+    }
+
+    updatePlayersList() {
+        const playersList = document.getElementById('players-list');
+        if (!playersList || !Array.isArray(this.players)) return;
+
+        Utils.clearElement(playersList);
+
+        this.players.forEach(player => {
+            const playerElement = this.createPlayerElement(player);
+            playersList.appendChild(playerElement);
+        });
+    }
+
+    createPlayerElement(player) {
+        const playerDiv = Utils.createElement('div', 'player-item');
+        
+        const isCurrentTurn = player.id === this.currentPlayerTurn;
+        const isCurrentPlayer = player.id === this.currentPlayerId;
+        
+        if (isCurrentTurn) playerDiv.classList.add('current');
+        if (player.eliminated) playerDiv.classList.add('eliminated');
+
+        const playerColor = this.map ? this.map.getPlayerColor(player.id) : '#999';
+        
+        playerDiv.innerHTML = `
+            <div class="player-avatar-small" style="background-color: ${playerColor}">
+                ${player.player_name.charAt(0).toUpperCase()}
+            </div>
+            <div class="player-details">
+                <div class="player-name">
+                    ${Utils.escapeHtml(player.player_name)}
+                    ${isCurrentPlayer ? ' (Du)' : ''}
+                    ${isCurrentTurn ? ' 🎯' : ''}
+                </div>
+                <div class="player-stats">
+                    <span>💰 ${player.gold || 0}</span>
+                    <span>⭐ Stufe ${player.tier_level || 1}</span>
+                    ${player.eliminated ? '<span>❌ Ausgeschieden</span>' : ''}
+                </div>
+            </div>
+        `;
+
+        return playerDiv;
     }
 
     updateActionButtons() {
         const isMyTurn = this.isMyTurn();
-        
-        document.querySelectorAll('.action-btn').forEach(btn => {
-            btn.disabled = !isMyTurn;
-        });
-        
-        // Update end turn button specifically
+        const moveBtn = document.getElementById('move-unit-btn');
+        const attackBtn = document.getElementById('attack-btn');
+        const buyBtn = document.getElementById('buy-unit-btn');
+        const upgradeBtn = document.getElementById('upgrade-tier-btn');
         const endTurnBtn = document.getElementById('end-turn-btn');
+
+        // Enable/disable buttons based on turn
+        [moveBtn, attackBtn, buyBtn, upgradeBtn].forEach(btn => {
+            if (btn) btn.disabled = !isMyTurn;
+        });
+
         if (endTurnBtn) {
             endTurnBtn.disabled = !isMyTurn;
-            endTurnBtn.textContent = isMyTurn ? 'Zug beenden' : 'Warten...';
+            endTurnBtn.textContent = isMyTurn ? '⏭️ Zug beenden' : '⏳ Warte auf Zug';
         }
+
+        // Update upgrade button
+        if (upgradeBtn && this.playerTier >= 3) {
+            upgradeBtn.disabled = true;
+            upgradeBtn.textContent = '✅ Max. Stufe';
+        }
+
+        // Update active action button
+        this.updateActionButtonStates();
     }
 
-    showTileInfo(x, y) {
-        const tile = this.map.getTileData(x, y);
-        const unit = this.units.getUnitAt(x, y);
-        
-        const infoPanel = document.getElementById('tile-info');
-        if (!infoPanel) return;
-        
-        let html = `<h4>Position: ${x}, ${y}</h4>`;
-        
-        if (tile) {
-            html += `<p><strong>Terrain:</strong> ${this.getTerrainName(tile.terrain_type_id)}</p>`;
-            
-            if (tile.building_type_id) {
-                html += `<p><strong>Gebäude:</strong> ${this.getBuildingName(tile.building_type_id)}</p>`;
-                if (tile.building_owner_id) {
-                    const owner = this.getPlayerName(tile.building_owner_id);
-                    html += `<p><strong>Besitzer:</strong> ${owner}</p>`;
-                }
+    updateActionButtonStates() {
+        const buttons = ['move-unit-btn', 'attack-btn', 'buy-unit-btn'];
+        buttons.forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.classList.toggle('active', this.selectedAction === btnId.replace('-btn', '').replace('-unit', ''));
             }
-        }
-        
-        if (unit) {
-            const owner = this.getPlayerName(unit.player_id);
-            const healthPercent = Math.round((unit.current_health / unit.health_points) * 100);
-            
-            html += `<hr>`;
-            html += `<p><strong>Einheit:</strong> ${unit.name}</p>`;
-            html += `<p><strong>Besitzer:</strong> ${owner}</p>`;
-            html += `<p><strong>Leben:</strong> ${unit.current_health}/${unit.health_points} (${healthPercent}%)</p>`;
-            html += `<p><strong>Angriff:</strong> ${unit.attack_power}</p>`;
-            html += `<p><strong>Bewegung:</strong> ${unit.movement_left}/${unit.movement_points}</p>`;
-            html += `<p><strong>Reichweite:</strong> ${unit.range}</p>`;
-        }
-        
-        infoPanel.innerHTML = html;
-    }
-
-    // Modals
-    showPurchaseModal(x, y) {
-        const tile = this.map.getTileData(x, y);
-        
-        if (!tile || !tile.building_type_id || tile.building_owner_id !== this.currentPlayerId) {
-            Utils.showError('Du kannst nur in deinen eigenen Gebäuden Einheiten kaufen!');
-            return;
-        }
-        
-        if (this.units.getUnitAt(x, y)) {
-            Utils.showError('Auf diesem Feld steht bereits eine Einheit!');
-            return;
-        }
-        
-        const modal = document.getElementById('purchase-modal');
-        if (!modal) return;
-        
-        const unitsList = document.getElementById('available-units');
-        if (!unitsList) return;
-        
-        // Clear previous content
-        unitsList.innerHTML = '';
-        
-        // Get affordable units
-        const affordableUnits = this.units.getAffordableUnits(this.playerGold, this.playerTier);
-        
-        if (affordableUnits.length === 0) {
-            unitsList.innerHTML = '<p>Keine Einheiten verfügbar oder nicht genug Gold.</p>';
-        } else {
-            affordableUnits.forEach(unit => {
-                const unitDiv = document.createElement('div');
-                unitDiv.className = `unit-option ${unit.affordable ? 'affordable' : 'not-affordable'}`;
-                
-                unitDiv.innerHTML = `
-                    <div class="unit-info">
-                        <h4>${unit.name}</h4>
-                        <p>Kosten: ${unit.cost} Gold</p>
-                        <p>Leben: ${unit.enhancedHealth}</p>
-                        <p>Angriff: ${unit.enhancedAttack}</p>
-                        <p>Bewegung: ${unit.movement_points}</p>
-                        <p>Reichweite: ${unit.enhancedRange}</p>
-                    </div>
-                    <button class="btn btn-primary" 
-                            ${unit.affordable ? '' : 'disabled'}
-                            onclick="gameController.purchaseUnit(${unit.id}, ${x}, ${y})">
-                        Kaufen
-                    </button>
-                `;
-                
-                unitsList.appendChild(unitDiv);
-            });
-        }
-        
-        this.selectedBuilding = { x, y };
-        modal.style.display = 'block';
-    }
-
-    showAttackModal(attacker, target) {
-        const modal = document.getElementById('attack-modal');
-        if (!modal) return;
-        
-        const attackerInfo = document.getElementById('attacker-info');
-        const targetInfo = document.getElementById('target-info');
-        const damagePreview = document.getElementById('damage-preview');
-        
-        if (attackerInfo) {
-            attackerInfo.innerHTML = `
-                <h4>Angreifer: ${attacker.name}</h4>
-                <p>Leben: ${attacker.current_health}/${attacker.health_points}</p>
-                <p>Angriff: ${attacker.attack_power}</p>
-            `;
-        }
-        
-        if (targetInfo) {
-            targetInfo.innerHTML = `
-                <h4>Ziel: ${target.name}</h4>
-                <p>Leben: ${target.current_health}/${target.health_points}</p>
-                <p>Besitzer: ${this.getPlayerName(target.player_id)}</p>
-            `;
-        }
-        
-        if (damagePreview) {
-            const damage = this.units.calculateDamage(attacker, target);
-            damagePreview.innerHTML = `
-                <p><strong>Voraussichtlicher Schaden:</strong> ${damage.damage}</p>
-                <p><strong>Verbleibendes Leben:</strong> ${damage.survivedHealth}</p>
-                ${damage.willDestroy ? '<p class="warning">⚠️ Einheit wird zerstört!</p>' : ''}
-            `;
-        }
-        
-        // Store attack data for confirmation
-        this.pendingAttack = { attacker, target };
-        modal.style.display = 'block';
-    }
-
-    showUpgradeModal() {
-        const modal = document.getElementById('upgrade-modal');
-        if (!modal) return;
-        
-        const currentTierElement = document.getElementById('current-tier');
-        const nextTierElement = document.getElementById('next-tier');
-        const upgradeCostElement = document.getElementById('upgrade-cost');
-        const upgradeBtn = document.getElementById('confirm-upgrade');
-        
-        if (this.playerTier >= 3) {
-            if (currentTierElement) currentTierElement.textContent = this.playerTier;
-            if (nextTierElement) nextTierElement.textContent = 'Maximale Stufe erreicht';
-            if (upgradeCostElement) upgradeCostElement.textContent = '-';
-            if (upgradeBtn) upgradeBtn.disabled = true;
-        } else {
-            const nextTier = this.playerTier + 1;
-            const cost = this.getUpgradeCost(nextTier);
-            const canAfford = this.playerGold >= cost;
-            
-            if (currentTierElement) currentTierElement.textContent = this.playerTier;
-            if (nextTierElement) nextTierElement.textContent = nextTier;
-            if (upgradeCostElement) upgradeCostElement.textContent = `${cost} Gold`;
-            if (upgradeBtn) {
-                upgradeBtn.disabled = !canAfford;
-                upgradeBtn.textContent = canAfford ? 'Aufwerten' : 'Nicht genug Gold';
-            }
-        }
-        
-        modal.style.display = 'block';
-    }
-
-    closeModals() {
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.style.display = 'none';
         });
-        
-        this.selectedBuilding = null;
-        this.pendingAttack = null;
     }
 
-    // Modal Actions
-    async purchaseUnit(unitId, x, y) {
-        try {
-            const response = await this.emitWithAck('purchase-unit', {
-                gameId: this.gameId,
-                playerName: this.playerName,
-                unitId,
-                x,
-                y
-            });
-            
-            console.log('Unit purchased successfully:', response);
-            this.closeModals();
-            
-        } catch (error) {
-            console.error('Error purchasing unit:', error);
-            Utils.showError('Fehler beim Kauf der Einheit: ' + error.message);
+    // Game Actions
+    setAction(action) {
+        if (!this.isMyTurn()) {
+            Utils.showError('Du bist nicht am Zug');
+            return;
         }
+
+        // Toggle action
+        if (this.selectedAction === action) {
+            this.selectedAction = null;
+            this.units.clearSelection();
+        } else {
+            this.selectedAction = action;
+        }
+
+        this.updateActionButtonStates();
+    }
+
+    onTileSelected(tile) {
+        if (!this.isMyTurn()) return;
+
+        const tileData = tile.data;
+        const unit = this.units.getUnitAt(tile.x, tile.y);
+
+        console.log(`Tile selected: ${tile.x}, ${tile.y}`, { tileData, unit, action: this.selectedAction });
+
+        switch (this.selectedAction) {
+            case 'move':
+                this.handleMoveAction(tile, unit);
+                break;
+            case 'attack':
+                this.handleAttackAction(tile, unit);
+                break;
+            case 'buy':
+                this.handleBuyAction(tile, tileData);
+                break;
+            default:
+                this.handleDefaultTileSelection(tile, unit, tileData);
+        }
+
+        this.updateSelectionInfo(tile, unit, tileData);
+    }
+
+    handleMoveAction(tile, unit) {
+        if (!this.units.selectedUnit) {
+            // Select unit to move
+            if (unit && unit.player_id === this.currentPlayerId) {
+                this.units.selectUnit(tile.x, tile.y);
+            } else {
+                Utils.showError('Wähle eine deiner Einheiten aus');
+            }
+        } else {
+            // Try to move selected unit
+            if (this.units.canMoveToTile(tile.x, tile.y)) {
+                this.moveSelectedUnit(tile.x, tile.y);
+            } else {
+                Utils.showError('Kann nicht zu diesem Feld bewegen');
+            }
+        }
+    }
+
+    handleAttackAction(tile, unit) {
+        if (!this.units.selectedUnit) {
+            // Select attacking unit
+            if (unit && unit.player_id === this.currentPlayerId) {
+                this.units.selectUnit(tile.x, tile.y);
+            } else {
+                Utils.showError('Wähle eine deiner Einheiten aus');
+            }
+        } else {
+            // Try to attack
+            if (this.units.canAttackTile(tile.x, tile.y)) {
+                this.showAttackModal(this.units.selectedUnit, unit);
+            } else {
+                Utils.showError('Kann dieses Ziel nicht angreifen');
+            }
+        }
+    }
+
+    handleBuyAction(tile, tileData) {
+        if (tileData.building_type_id && tileData.building_owner_id === this.currentPlayerId) {
+            if (this.units.isValidPurchaseLocation(tile.x, tile.y)) {
+                this.selectedBuilding = { x: tile.x, y: tile.y, type: tileData.building_type_id };
+                this.showPurchaseModal();
+            } else {
+                Utils.showError('Auf diesem Gebäude steht bereits eine Einheit');
+            }
+        } else {
+            Utils.showError('Du kannst nur in deinen eigenen Gebäuden Einheiten kaufen');
+        }
+    }
+
+    handleDefaultTileSelection(tile, unit, tileData) {
+        if (unit && unit.player_id === this.currentPlayerId) {
+            // Select own unit
+            this.units.selectUnit(tile.x, tile.y);
+        } else {
+            // Just show tile info
+            this.units.clearSelection();
+        }
+    }
+
+    async moveSelectedUnit(x, y) {
+        if (!this.units.selectedUnit) return;
+
+        try {
+            const response = await this.units.moveUnit(this.units.selectedUnit, x, y);
+            Utils.showSuccess('Einheit bewegt');
+            this.units.clearSelection();
+            this.selectedAction = null;
+            this.updateActionButtonStates();
+        } catch (error) {
+            Utils.showError(error.message);
+        }
+    }
+
+    showAttackModal(attacker, defender) {
+        const modal = document.getElementById('attack-modal');
+        const attackerDetails = document.getElementById('attacker-details');
+        const defenderDetails = document.getElementById('defender-details');
+        const damagePreview = document.getElementById('damage-preview');
+
+        if (!modal || !attackerDetails || !defenderDetails || !damagePreview) return;
+
+        const attackerInfo = this.units.getUnitDisplayInfo(attacker);
+        const defenderInfo = this.units.getUnitDisplayInfo(defender);
+        const damage = this.units.calculateDamage(attacker, defender);
+
+        attackerDetails.innerHTML = `
+            <div><strong>${attackerInfo.name}</strong></div>
+            <div>❤️ ${attackerInfo.health}/${attackerInfo.maxHealth}</div>
+            <div>⚔️ ${attackerInfo.attack}</div>
+        `;
+
+        defenderDetails.innerHTML = `
+            <div><strong>${defenderInfo.name}</strong></div>
+            <div>❤️ ${defenderInfo.health}/${defenderInfo.maxHealth}</div>
+            <div>🛡️ Verteidiger</div>
+        `;
+
+        damagePreview.innerHTML = `
+            <strong>Schaden: ${damage.damage}</strong><br>
+            ${damage.willDestroy ? 
+                '<span style="color: #f44336;">Einheit wird zerstört!</span>' : 
+                `Verbleibt: ${damage.survivedHealth} HP`
+            }
+        `;
+
+        this.attackTarget = { x: defender.x_pos, y: defender.y_pos };
+        Utils.showModal('attack-modal');
     }
 
     async confirmAttack() {
-        if (!this.pendingAttack) return;
-        
-        const { attacker, target } = this.pendingAttack;
-        
+        if (!this.units.selectedUnit || !this.attackTarget) return;
+
         try {
-            const response = await this.emitWithAck('attack-unit', {
-                gameId: this.gameId,
-                playerName: this.playerName,
-                attackerId: attacker.id,
-                targetId: target.id
-            });
+            const response = await this.units.attackUnit(
+                this.units.selectedUnit, 
+                this.attackTarget.x, 
+                this.attackTarget.y
+            );
             
-            console.log('Attack completed successfully:', response);
-            
+            Utils.hideModal('attack-modal');
+            Utils.showSuccess('Angriff erfolgreich');
+            this.units.clearSelection();
+            this.selectedAction = null;
+            this.updateActionButtonStates();
         } catch (error) {
-            console.error('Error attacking unit:', error);
-            Utils.showError('Fehler beim Angriff: ' + error.message);
+            Utils.showError(error.message);
         }
     }
 
-    async confirmUpgrade() {
-        if (this.playerTier >= 3) {
-            Utils.showError('Maximale Stufe bereits erreicht!');
-            return;
-        }
+    showPurchaseModal() {
+        if (!this.selectedBuilding) return;
+
+        const modal = document.getElementById('purchase-modal');
+        const unitsGrid = document.getElementById('available-units');
+
+        if (!modal || !unitsGrid) return;
+
+        Utils.clearElement(unitsGrid);
+
+        const affordableUnits = this.units.getAffordableUnits(this.playerGold, this.playerTier);
+
+        affordableUnits.forEach(unit => {
+            const unitCard = this.createPurchaseUnitCard(unit);
+            unitsGrid.appendChild(unitCard);
+        });
+
+        Utils.showModal('purchase-modal');
+    }
+
+    createPurchaseUnitCard(unit) {
+        const unitDiv = Utils.createElement('div', 'unit-card');
         
+        if (unit.affordable) {
+            unitDiv.classList.add('affordable');
+        } else {
+            unitDiv.classList.add('expensive');
+        }
+
+        unitDiv.innerHTML = `
+            <div class="unit-image">
+                ${unit.name.charAt(0).toUpperCase()}
+            </div>
+            <div class="unit-name">${Utils.escapeHtml(unit.name)}</div>
+            <div class="unit-cost">💰 ${unit.cost}</div>
+            <div class="unit-stats-mini">
+                <span>❤️ ${unit.enhancedHealth}</span>
+                <span>⚔️ ${unit.enhancedAttack}</span>
+                <span>🎯 ${unit.enhancedRange}</span>
+            </div>
+        `;
+
+        if (unit.affordable) {
+            unitDiv.addEventListener('click', () => this.purchaseUnit(unit));
+        }
+
+        return unitDiv;
+    }
+
+    async purchaseUnit(unit) {
+        if (!this.selectedBuilding) return;
+
+        try {
+            const response = await this.units.purchaseUnit(
+                unit.id, 
+                this.selectedBuilding.x, 
+                this.selectedBuilding.y
+            );
+            
+            Utils.hideModal('purchase-modal');
+            Utils.showSuccess(`${unit.name} gekauft`);
+            
+            // Update gold
+            this.playerGold -= unit.cost;
+            this.updateGameUI();
+            
+            this.selectedBuilding = null;
+            this.selectedAction = null;
+            this.updateActionButtonStates();
+        } catch (error) {
+            Utils.showError(error.message);
+        }
+    }
+
+    showUpgradeModal() {
+        if (!this.isMyTurn() || this.playerTier >= 3) return;
+
+        const modal = document.getElementById('upgrade-modal');
+        const currentTierEl = document.getElementById('current-tier-level');
+        const upgradeCostEl = document.getElementById('upgrade-cost');
+
+        if (!modal) return;
+
         const nextTier = this.playerTier + 1;
-        const cost = this.getUpgradeCost(nextTier);
-        
+        const upgradeCosts = { 2: 500, 3: 1000 };
+        const cost = upgradeCosts[nextTier] || 0;
+
+        if (currentTierEl) currentTierEl.textContent = this.playerTier;
+        if (upgradeCostEl) upgradeCostEl.textContent = cost;
+
+        const confirmBtn = document.getElementById('confirm-upgrade');
+        if (confirmBtn) {
+            confirmBtn.disabled = this.playerGold < cost;
+            confirmBtn.textContent = this.playerGold < cost ? 'Nicht genug Gold' : 'Stufe erhöhen';
+        }
+
+        Utils.showModal('upgrade-modal');
+    }
+
+    async confirmUpgrade() {
+        const nextTier = this.playerTier + 1;
+        const upgradeCosts = { 2: 500, 3: 1000 };
+        const cost = upgradeCosts[nextTier] || 0;
+
         if (this.playerGold < cost) {
-            Utils.showError('Nicht genug Gold für das Upgrade!');
+            Utils.showError('Nicht genug Gold');
             return;
         }
-        
+
         try {
             const response = await this.emitWithAck('upgrade-tier', {
                 gameId: this.gameId,
                 playerName: this.playerName,
-                targetTier: nextTier
+                newTier: nextTier
             });
-            
-            console.log('Tier upgraded successfully:', response);
-            
+
+            if (response.success) {
+                Utils.hideModal('upgrade-modal');
+                Utils.showSuccess(`Auf Stufe ${nextTier} aufgestiegen!`);
+                
+                this.playerTier = nextTier;
+                this.playerGold -= cost;
+                this.updateGameUI();
+            } else {
+                throw new Error(response.error);
+            }
         } catch (error) {
-            console.error('Error upgrading tier:', error);
-            Utils.showError('Fehler beim Aufwerten: ' + error.message);
+            Utils.showError(error.message || 'Fehler beim Aufstieg');
         }
     }
 
-    // Helper Methods
-    isMyTurn() {
-        const currentPlayer = this.players.find(p => p.player_order === this.currentPlayerTurn);
-        return currentPlayer && currentPlayer.player_name === this.playerName;
+    async endTurn() {
+        if (!this.isMyTurn()) {
+            Utils.showError('Du bist nicht am Zug');
+            return;
+        }
+
+        try {
+            this.socket.emit('end-turn', {
+                gameId: this.gameId,
+                playerName: this.playerName
+            });
+
+            // Clear selection
+            this.units.clearSelection();
+            this.selectedAction = null;
+            this.updateActionButtonStates();
+            
+            Utils.showInfo('Zug beendet');
+        } catch (error) {
+            Utils.showError('Fehler beim Beenden des Zugs');
+        }
     }
 
-    getUpgradeCost(tier) {
-        const costs = { 2: 500, 3: 1000 };
-        return costs[tier] || 0;
+    updateSelectionInfo(tile, unit, tileData) {
+        const selectionInfo = document.getElementById('selection-info');
+        const selectionContent = document.getElementById('selection-content');
+
+        if (!selectionInfo || !selectionContent) return;
+
+        Utils.clearElement(selectionContent);
+
+        if (unit) {
+            // Show unit info
+            const unitInfo = this.units.getUnitDisplayInfo(unit);
+            const isOwnUnit = unit.player_id === this.currentPlayerId;
+
+            const unitInfoDiv = Utils.createElement('div', 'unit-info');
+            unitInfoDiv.innerHTML = `
+                <h4>${Utils.escapeHtml(unitInfo.name)} ${isOwnUnit ? '(Deine)' : ''}</h4>
+                <div class="unit-health-bar">
+                    <div class="health-fill ${this.getHealthClass(unitInfo.healthPercent)}" 
+                         style="width: ${unitInfo.healthPercent}%"></div>
+                </div>
+                <div class="unit-stats">
+                    <div class="stat-item">
+                        <span>❤️ Leben:</span>
+                        <span>${unitInfo.health}/${unitInfo.maxHealth}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>⚔️ Angriff:</span>
+                        <span>${unitInfo.attack}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>🚶 Bewegung:</span>
+                        <span>${unitInfo.movement}/${unitInfo.maxMovement}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>🎯 Reichweite:</span>
+                        <span>${unitInfo.range}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>✈️ Typ:</span>
+                        <span>${unitInfo.canFly ? 'Fliegend' : 'Boden'}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>📍 Position:</span>
+                        <span>${tile.x}, ${tile.y}</span>
+                    </div>
+                </div>
+            `;
+
+            selectionContent.appendChild(unitInfoDiv);
+        } else {
+            // Show tile info
+            const tileInfoDiv = Utils.createElement('div', 'tile-info');
+            tileInfoDiv.innerHTML = `
+                <h4>Feld (${tile.x}, ${tile.y})</h4>
+                <div class="tile-stats">
+                    <div class="stat-item">
+                        <span>🌍 Terrain:</span>
+                        <span>${this.getTerrainName(tileData.terrain_type_id)}</span>
+                    </div>
+                    ${tileData.building_type_id ? `
+                        <div class="stat-item">
+                            <span>🏰 Gebäude:</span>
+                            <span>${this.getBuildingName(tileData.building_type_id)}</span>
+                        </div>
+                    ` : ''}
+                    ${tileData.building_owner_id ? `
+                        <div class="stat-item">
+                            <span>👤 Besitzer:</span>
+                            <span>${this.getPlayerName(tileData.building_owner_id)}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            selectionContent.appendChild(tileInfoDiv);
+        }
+
+        selectionInfo.classList.remove('hidden');
     }
 
-    clearSelection() {
-        this.selectedAction = null;
-        this.units.clearSelection();
+    // Socket Event Handlers
+    handleGameStateUpdate(gameState) {
+        console.log('Game state update received:', gameState);
         
-        document.querySelectorAll('.action-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
+        if (gameState.game) {
+            this.gameData = gameState.game;
+            this.currentTurn = gameState.game.current_turn;
+            this.currentPlayerTurn = gameState.game.current_player_turn;
+        }
+
+        if (gameState.players) {
+            this.players = gameState.players;
+            
+            // Update current player data
+            const currentPlayer = this.players.find(p => p.id === this.currentPlayerId);
+            if (currentPlayer) {
+                this.playerGold = currentPlayer.gold || 0;
+                this.playerTier = currentPlayer.tier_level || 1;
+            }
+        }
+
+        this.updateGameUI();
+    }
+
+    handleTurnChange(data) {
+        console.log('Turn changed:', data);
+        
+        this.currentPlayerTurn = this.getPlayerByName(data.currentPlayer)?.id;
+        this.currentTurn = data.turn;
+        
+        // Clear selections when turn changes
+        this.units.clearSelection();
+        this.selectedAction = null;
+        
+        this.updateGameUI();
+        
+        if (this.isMyTurn()) {
+            Utils.showSuccess('Du bist dran!');
+        } else {
+            Utils.showInfo(`${data.currentPlayer} ist am Zug`);
+        }
+    }
+
+    handleUnitMoved(data) {
+        console.log('Unit moved:', data);
+        
+        // Update unit position
+        if (data.unit) {
+            this.units.updateUnit(data.unit);
+            this.map.updateUnits(this.units.units);
+        }
+        
+        // Update player gold if applicable
+        if (data.playerGold !== undefined) {
+            const player = this.players.find(p => p.id === data.playerId);
+            if (player) {
+                player.gold = data.playerGold;
+                if (player.id === this.currentPlayerId) {
+                    this.playerGold = data.playerGold;
+                }
+            }
+        }
+        
+        this.updateGameUI();
+    }
+
+    handleUnitAttacked(data) {
+        console.log('Unit attacked:', data);
+        
+        // Update attacker
+        if (data.attacker) {
+            this.units.updateUnit(data.attacker);
+        }
+        
+        // Update or remove defender
+        if (data.defender) {
+            this.units.updateUnit(data.defender);
+        } else if (data.destroyedUnitId) {
+            this.units.removeUnit(data.destroyedUnitId);
+        }
+        
+        this.map.updateUnits(this.units.units);
+        
+        const message = data.destroyed ? 
+            `Einheit zerstört! ${data.damage} Schaden` : 
+            `${data.damage} Schaden verursacht`;
+        Utils.showInfo(message);
+    }
+
+    handleUnitPurchased(data) {
+        console.log('Unit purchased:', data);
+        
+        // Add new unit
+        if (data.unit) {
+            this.units.addUnit(data.unit);
+            this.map.updateUnits(this.units.units);
+        }
+        
+        // Update player gold
+        if (data.playerGold !== undefined) {
+            const player = this.players.find(p => p.id === data.playerId);
+            if (player) {
+                player.gold = data.playerGold;
+                if (player.id === this.currentPlayerId) {
+                    this.playerGold = data.playerGold;
+                }
+            }
+        }
+        
+        this.updateGameUI();
+    }
+
+    handlePlayerEliminated(data) {
+        console.log('Player eliminated:', data);
+        
+        const player = this.players.find(p => p.id === data.playerId);
+        if (player) {
+            player.eliminated = true;
+            Utils.showInfo(`${player.player_name} wurde eliminiert!`);
+        }
+        
+        this.updateGameUI();
+    }
+
+    handleGameEnded(data) {
+        console.log('Game ended:', data);
+        
+        const winnerName = data.winner ? this.getPlayerName(data.winner) : 'Unbekannt';
+        const isWinner = data.winner === this.currentPlayerId;
+        
+        this.showVictoryModal(winnerName, isWinner, data.stats);
+    }
+
+    showVictoryModal(winnerName, isWinner, stats) {
+        const modal = document.getElementById('victory-modal');
+        const victoryTitle = document.getElementById('victory-title');
+        const victoryMessage = document.getElementById('victory-message');
+        const gameStats = document.getElementById('game-stats');
+
+        if (!modal) return;
+
+        if (victoryTitle) {
+            victoryTitle.textContent = isWinner ? '🎉 Sieg!' : '💔 Niederlage';
+        }
+
+        if (victoryMessage) {
+            victoryMessage.innerHTML = isWinner ? 
+                `<strong>Herzlichen Glückwunsch!</strong><br>Du hast das Spiel gewonnen!` :
+                `<strong>Spiel beendet</strong><br>${Utils.escapeHtml(winnerName)} hat gewonnen.`;
+        }
+
+        if (gameStats && stats) {
+            gameStats.innerHTML = `
+                <h4>📊 Spielstatistiken</h4>
+                <div class="stat-item">
+                    <span>🏁 Runden gespielt:</span>
+                    <span>${stats.totalTurns || this.currentTurn}</span>
+                </div>
+                <div class="stat-item">
+                    <span>⏱️ Spieldauer:</span>
+                    <span>${this.formatGameDuration(stats.duration)}</span>
+                </div>
+                <div class="stat-item">
+                    <span>👥 Spieler:</span>
+                    <span>${this.players.length}</span>
+                </div>
+                ${stats.unitsKilled ? `
+                    <div class="stat-item">
+                        <span>⚔️ Einheiten besiegt:</span>
+                        <span>${stats.unitsKilled}</span>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        Utils.showModal('victory-modal');
+    }
+
+    // Keyboard Handlers
+    handleKeyboard(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        switch (e.key) {
+            case '1':
+                if (this.isMyTurn()) this.setAction('move');
+                break;
+            case '2':
+                if (this.isMyTurn()) this.setAction('attack');
+                break;
+            case '3':
+                if (this.isMyTurn()) this.setAction('buy');
+                break;
+            case 'u':
+            case 'U':
+                if (this.isMyTurn()) this.showUpgradeModal();
+                break;
+            case ' ':
+                if (this.isMyTurn()) {
+                    e.preventDefault();
+                    this.endTurn();
+                }
+                break;
+            case 'Escape':
+                this.units.clearSelection();
+                this.selectedAction = null;
+                this.updateActionButtonStates();
+                break;
+            case 'c':
+            case 'C':
+                this.chat.focusInput();
+                break;
+        }
+    }
+
+    // Utility Methods
+    isMyTurn() {
+        return this.currentPlayerTurn === this.currentPlayerId;
+    }
+
+    getCurrentTurnPlayer() {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
+        return this.players.find(p => p.id === this.currentPlayerTurn);
+    }
+
+    getPlayer(playerId) {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
+        return this.players.find(p => p.id === playerId);
+    }
+
+    getPlayerByName(playerName) {
+        // ✅ FIXED: Add safety check for players array
+        if (!Array.isArray(this.players)) {
+            console.error('Players is not an array:', this.players);
+            return null;
+        }
+        return this.players.find(p => p.player_name === playerName);
     }
 
     getPlayerName(playerId) {
-        const player = this.players.find(p => p.id === playerId);
+        const player = this.getPlayer(playerId);
         return player ? player.player_name : 'Unbekannt';
     }
 

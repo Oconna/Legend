@@ -459,78 +459,78 @@ async loadGameData() {
     }
 
     // ✅ CRITICAL FIX: Improved map loading with better error handling
-async loadMapData() {
-    try {
-        console.log(`🗺️ Loading map data for game ${this.gameId}...`);
-        
-        // ✅ CRITICAL: Add retry logic for map loading
-        let mapData = null;
-        let retries = 0;
-        const maxRetries = 5;
-        const retryDelay = 1000; // 1 second
-        
-        while (retries < maxRetries && (!mapData || mapData.length === 0)) {
-            try {
-                mapData = await Utils.get(`/api/games/${this.gameId}/map`);
-                
-                if (mapData && mapData.length > 0) {
-                    console.log(`✅ Map data loaded successfully: ${mapData.length} tiles`);
-                    break;
-                } else {
-                    console.log(`⚠️ Map data empty on attempt ${retries + 1}/${maxRetries}`);
+    async loadMapData() {
+        try {
+            console.log(`🗺️ Loading map data for game ${this.gameId}...`);
+            
+            // ✅ CRITICAL: Add retry logic for map loading
+            let mapData = null;
+            let retries = 0;
+            const maxRetries = 5;
+            const retryDelay = 1000; // 1 second
+            
+            while (retries < maxRetries && (!mapData || mapData.length === 0)) {
+                try {
+                    mapData = await Utils.get(`/api/games/${this.gameId}/map`);
+                    
+                    if (mapData && mapData.length > 0) {
+                        console.log(`✅ Map data loaded successfully: ${mapData.length} tiles`);
+                        break;
+                    } else {
+                        console.log(`⚠️ Map data empty on attempt ${retries + 1}/${maxRetries}`);
+                        retries++;
+                        
+                        if (retries < maxRetries) {
+                            console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`❌ Map loading attempt ${retries + 1} failed:`, error);
                     retries++;
                     
                     if (retries < maxRetries) {
-                        console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
                         await new Promise(resolve => setTimeout(resolve, retryDelay));
                     }
                 }
-            } catch (error) {
-                console.error(`❌ Map loading attempt ${retries + 1} failed:`, error);
-                retries++;
+            }
+            
+            if (mapData && mapData.length > 0) {
+                console.log(`🎨 Loading map with ${mapData.length} tiles...`);
                 
-                if (retries < maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                // ✅ CRITICAL: Ensure map is properly initialized before loading
+                if (!this.map) {
+                    console.error('❌ Map component not initialized!');
+                    throw new Error('Map component not available');
                 }
-            }
-        }
-        
-        if (mapData && mapData.length > 0) {
-            console.log(`🎨 Loading map with ${mapData.length} tiles...`);
-            
-            // ✅ CRITICAL: Ensure map is properly initialized before loading
-            if (!this.map) {
-                console.error('❌ Map component not initialized!');
-                throw new Error('Map component not available');
-            }
-            
-            // ✅ CRITICAL: Wait for map to fully load
-            await this.map.loadMap(mapData);
-            console.log('✅ Map loaded and rendered successfully');
-            
-            // ✅ CRITICAL: Verify map was actually loaded
-            if (this.map.mapData && this.map.mapData.length > 0) {
-                console.log('✅ Map data verification successful');
-                return mapData;
+                
+                // ✅ CRITICAL: Wait for map to fully load
+                await this.map.loadMap(mapData);
+                console.log('✅ Map loaded and rendered successfully');
+                
+                // ✅ CRITICAL: Verify map was actually loaded
+                if (this.map.mapData && this.map.mapData.length > 0) {
+                    console.log('✅ Map data verification successful');
+                    return mapData;
+                } else {
+                    throw new Error('Map failed to load properly');
+                }
+                
             } else {
-                throw new Error('Map failed to load properly');
+                console.log('⚠️ No map data available after all retries - using placeholder');
+                this.showMapPlaceholder();
+                return [];
             }
             
-        } else {
-            console.log('⚠️ No map data available after all retries - using placeholder');
+        } catch (error) {
+            console.error('❌ Critical error loading map:', error);
+            
+            // ✅ IMPROVED: Always show placeholder on error
             this.showMapPlaceholder();
+            Utils.showError('Karte konnte nicht geladen werden. Platzhalter wird angezeigt.');
             return [];
         }
-        
-    } catch (error) {
-        console.error('❌ Critical error loading map:', error);
-        
-        // ✅ IMPROVED: Always show placeholder on error
-        this.showMapPlaceholder();
-        Utils.showError('Karte konnte nicht geladen werden. Platzhalter wird angezeigt.');
-        return [];
     }
-}
 
     // ✅ CRITICAL FIX: Improved units loading with better error handling
 async loadUnitsData() {
