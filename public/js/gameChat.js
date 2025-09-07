@@ -1,27 +1,28 @@
-// Game Chat System - Reusable across pages
+// Game Chat System - FIXED VERSION with proper sync
 class GameChat {
-    constructor(gameId, playerName, socket) {
+    constructor(socket, gameId, playerName) {
+        this.socket = socket;
         this.gameId = gameId;
         this.playerName = playerName;
-        this.socket = socket;
-        this.messages = [];
-        this.maxMessages = 100;
-        this.isInitialized = false;
+        
+        // Rate limiting
+        this.lastMessageTime = 0;
+        this.messageHistory = [];
         
         this.init();
     }
 
     init() {
-        this.bindEvents();
+        console.log('💬 Initializing game chat...');
+        this.setupChatEvents();
         this.loadChatHistory();
-        this.isInitialized = true;
     }
 
-    bindEvents() {
+    setupChatEvents() {
         // Chat input events
         const chatInput = document.getElementById('chat-input');
-        const sendChat = document.getElementById('send-chat');
-        
+        const sendChatBtn = document.getElementById('send-chat');
+
         if (chatInput) {
             chatInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -30,53 +31,32 @@ class GameChat {
                 }
             });
 
-            // Auto-resize textarea if it's a textarea
-            if (chatInput.tagName === 'TEXTAREA') {
-                chatInput.addEventListener('input', () => {
-                    this.autoResizeTextarea(chatInput);
-                });
-            }
+            // Auto-resize for textarea
+            chatInput.addEventListener('input', (e) => {
+                if (e.target.tagName === 'TEXTAREA') {
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                }
+            });
         }
 
-        if (sendChat) {
-            sendChat.addEventListener('click', () => {
+        if (sendChatBtn) {
+            sendChatBtn.addEventListener('click', () => {
                 this.sendMessage();
             });
         }
 
-        // Socket events
-        if (this.socket) {
-            this.socket.on('chat-message', (message) => {
-                this.handleIncomingMessage(message);
-            });
-        }
-
-        // Focus chat input with keyboard shortcut
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && 
-                document.activeElement !== chatInput) {
-                const activeElement = document.activeElement;
-                if (activeElement && (activeElement.tagName === 'INPUT' || 
-                    activeElement.tagName === 'TEXTAREA')) {
-                    return; // Don't interfere with other inputs
-                }
-                
-                if (chatInput) {
-                    chatInput.focus();
-                    e.preventDefault();
-                }
-            }
-        });
+        console.log('✅ Chat events setup complete');
     }
 
     async loadChatHistory() {
-        if (!this.gameId) return;
-
         try {
+            console.log('📜 Loading chat history...');
+            
             const messages = await Utils.get(`/api/games/${this.gameId}/chat`);
             
             // Clear existing messages
-            this.messages = [];
+            this.messageHistory = [];
             const chatMessages = document.getElementById('chat-messages');
             if (chatMessages) {
                 Utils.clearElement(chatMessages);
@@ -94,10 +74,10 @@ class GameChat {
             // Scroll to bottom after loading history
             this.scrollToBottom();
             
-            console.log(`Loaded ${messages.length} chat messages`);
+            console.log(`✅ Loaded ${messages.length} chat messages`);
             
         } catch (error) {
-            console.error('Error loading chat history:', error);
+            console.error('❌ Error loading chat history:', error);
             this.addSystemMessage('Fehler beim Laden des Chat-Verlaufs');
         }
     }
@@ -121,291 +101,152 @@ class GameChat {
             return;
         }
 
-        // Send via socket
-        if (this.socket && this.socket.connected) {
-            this.socket.emit('send-chat-message', {
-                gameId: this.gameId,
-                playerName: this.playerName,
-                message: message
-            });
-
-            // Clear input
-            chatInput.value = '';
-            
-            // Reset textarea height if applicable
-            if (chatInput.tagName === 'TEXTAREA') {
-                chatInput.style.height = 'auto';
-            }
-
-            // Update last message time for spam protection
-            this.lastMessageTime = Date.now();
-            
-        } else {
+        // ✅ CRITICAL FIX: Ensure socket is connected before sending
+        if (!this.socket || !this.socket.connected) {
             this.addSystemMessage('Nicht mit dem Server verbunden');
+            return;
         }
+
+        console.log('📤 Sending chat message:', message);
+
+        // Send via socket
+        this.socket.emit('send-chat-message', {
+            gameId: this.gameId,
+            playerName: this.playerName,
+            message: message
+        });
+
+        // Clear input
+        chatInput.value = '';
+        
+        // Reset textarea height if applicable
+        if (chatInput.tagName === 'TEXTAREA') {
+            chatInput.style.height = 'auto';
+        }
+
+        // Update last message time for spam protection
+        this.lastMessageTime = Date.now();
     }
 
+    // ✅ CRITICAL FIX: Proper incoming message handling
     handleIncomingMessage(messageData) {
+        console.log('📨 Handling incoming chat message:', messageData);
+        
         this.addMessage({
             playerName: messageData.playerName,
             message: messageData.message,
             timestamp: messageData.timestamp || new Date().toISOString()
-        });
+        }, true); // Auto-scroll for new messages
     }
 
     addMessage(messageData, autoScroll = true) {
+        const { playerName, message, timestamp } = messageData;
+        
+        // Prevent duplicate messages
+        const messageKey = `${playerName}-${message}-${timestamp}`;
+        if (this.messageHistory.includes(messageKey)) {
+            console.log('🔄 Duplicate message prevented:', messageKey);
+            return;
+        }
+        
+        this.messageHistory.push(messageKey);
+        
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;
 
-        // Add to messages array
-        this.messages.push(messageData);
-
-        // Limit message history
-        if (this.messages.length > this.maxMessages) {
-            this.messages.shift();
-        }
-
-        // Create message element
-        const messageElement = this.createMessageElement(messageData);
-        chatMessages.appendChild(messageElement);
-
-        // Remove old messages from DOM if too many
-        while (chatMessages.children.length > this.maxMessages) {
-            chatMessages.removeChild(chatMessages.firstChild);
-        }
-
-        // Auto-scroll to bottom if user was at bottom
-        if (autoScroll) {
-            this.scrollToBottom();
-        }
-
-        // Highlight mention of current player
-        if (messageData.message.toLowerCase().includes(this.playerName.toLowerCase()) &&
-            messageData.playerName !== this.playerName) {
-            messageElement.classList.add('mentioned');
-            this.showNotification(`${messageData.playerName} hat dich erwähnt`);
-        }
-    }
-
-    createMessageElement(messageData) {
-        const messageDiv = Utils.createElement('div', 'chat-message');
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message';
         
-        // Add special styling for different message types
-        if (messageData.playerName === this.playerName) {
-            messageDiv.classList.add('own-message');
-        } else if (messageData.playerName === 'System') {
-            messageDiv.classList.add('system-message');
+        // Mark own messages
+        if (playerName === this.playerName) {
+            messageElement.classList.add('own-message');
         }
 
-        const timestamp = Utils.formatTime(messageData.timestamp);
-        const isOwnMessage = messageData.playerName === this.playerName;
+        const timeFormatted = this.formatTimestamp(timestamp);
         
-        // Escape HTML in message content
-        const safeMessage = this.formatMessage(messageData.message);
-        
-        messageDiv.innerHTML = `
-            <div class="message-header">
-                <span class="player-name ${isOwnMessage ? 'own' : ''}">${Utils.escapeHtml(messageData.playerName)}:</span>
-                <span class="timestamp">${timestamp}</span>
+        messageElement.innerHTML = `
+            <div class="chat-message-header">
+                <span class="chat-message-sender">${Utils.escapeHtml(playerName)}</span>
+                <span class="chat-message-time">${timeFormatted}</span>
             </div>
-            <div class="message-content">${safeMessage}</div>
+            <div class="chat-message-content">${Utils.escapeHtml(message)}</div>
         `;
 
-        return messageDiv;
-    }
+        chatMessages.appendChild(messageElement);
 
-    formatMessage(message) {
-        let formatted = Utils.escapeHtml(message);
-        
-        // Basic emoji support
-        const emojiMap = {
-            ':)': '🙂', ':-)': '🙂', ':(': '🙁', ':-(': '🙁',
-            ':D': '😄', ':-D': '😄', ':P': '😛', ':-P': '😛',
-            ';)': '😉', ';-)': '😉', ':o': '😮', ':-o': '😮',
-            ':thumbsup:': '👍', ':thumbsdown:': '👎',
-            ':heart:': '❤️', ':fire:': '🔥', ':star:': '⭐'
-        };
+        // Auto-scroll if requested and user is near bottom
+        if (autoScroll) {
+            const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 50;
+            if (isNearBottom) {
+                this.scrollToBottom();
+            }
+        }
 
-        Object.keys(emojiMap).forEach(emoticon => {
-            const regex = new RegExp(Utils.escapeHtml(emoticon).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            formatted = formatted.replace(regex, emojiMap[emoticon]);
-        });
-
-        // Simple URL detection and linking
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        formatted = formatted.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-
-        return formatted;
+        // Limit message history in DOM (keep last 100 messages)
+        const messages = chatMessages.querySelectorAll('.chat-message');
+        if (messages.length > 100) {
+            messages[0].remove();
+        }
     }
 
     addSystemMessage(message) {
-        this.addMessage({
-            playerName: 'System',
-            message: message,
-            timestamp: new Date().toISOString()
-        });
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message system-message';
+        
+        messageElement.innerHTML = `
+            <div class="chat-message-content">${Utils.escapeHtml(message)}</div>
+        `;
+
+        chatMessages.appendChild(messageElement);
+        this.scrollToBottom();
     }
 
     scrollToBottom() {
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            setTimeout(() => {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }, 100);
         }
     }
 
     isSpamming() {
-        if (!this.lastMessageTime) {
-            this.lastMessageTime = Date.now();
-            return false;
+        const now = Date.now();
+        const timeSinceLastMessage = now - this.lastMessageTime;
+        return timeSinceLastMessage < 1000; // 1 second cooldown
+    }
+
+    formatTimestamp(timestamp) {
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('de-DE', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (error) {
+            return '';
         }
-
-        const timeSinceLastMessage = Date.now() - this.lastMessageTime;
-        const minInterval = 1000; // 1 second minimum between messages
-
-        return timeSinceLastMessage < minInterval;
     }
 
-    autoResizeTextarea(textarea) {
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
-    }
-
-    showNotification(message) {
-        // Simple notification - you could enhance this with browser notifications
-        if (document.hidden) {
-            // Page is not visible, could use browser notification API
-            if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('Strategy Game', {
-                    body: message,
-                    icon: '/favicon.ico'
-                });
-            }
-        }
-
-        // In-app notification
-        Utils.showInfo(message);
-    }
-
-    // Public methods for external control
+    // ✅ NEW: Method to clear chat (for debugging)
     clearChat() {
-        this.messages = [];
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) {
             Utils.clearElement(chatMessages);
         }
+        this.messageHistory = [];
     }
 
-    setPlayerName(newPlayerName) {
-        this.playerName = newPlayerName;
-    }
-
-    focusInput() {
-        const chatInput = document.getElementById('chat-input');
-        if (chatInput) {
-            chatInput.focus();
-        }
-    }
-
-    // Export chat history
-    exportChatHistory() {
-        const chatData = {
+    // ✅ NEW: Method to check connection status
+    getConnectionStatus() {
+        return {
+            connected: this.socket && this.socket.connected,
             gameId: this.gameId,
-            exportDate: new Date().toISOString(),
-            messages: this.messages
+            playerName: this.playerName,
+            messageCount: this.messageHistory.length
         };
-
-        const blob = new Blob([JSON.stringify(chatData, null, 2)], {
-            type: 'application/json'
-        });
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chat-history-${this.gameId}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    // Mute/unmute players (client-side only)
-    togglePlayerMute(playerName) {
-        this.mutedPlayers = this.mutedPlayers || new Set();
-        
-        if (this.mutedPlayers.has(playerName)) {
-            this.mutedPlayers.delete(playerName);
-            this.addSystemMessage(`${playerName} wurde entmutete`);
-        } else {
-            this.mutedPlayers.add(playerName);
-            this.addSystemMessage(`${playerName} wurde stummgeschaltet`);
-        }
-
-        // Update existing messages
-        this.refreshMessageVisibility();
-    }
-
-    refreshMessageVisibility() {
-        const chatMessages = document.getElementById('chat-messages');
-        if (!chatMessages || !this.mutedPlayers) return;
-
-        Array.from(chatMessages.children).forEach(messageElement => {
-            const playerNameElement = messageElement.querySelector('.player-name');
-            if (playerNameElement) {
-                const playerName = playerNameElement.textContent.replace(':', '');
-                if (this.mutedPlayers.has(playerName)) {
-                    messageElement.style.opacity = '0.3';
-                    messageElement.style.fontSize = '0.8em';
-                } else {
-                    messageElement.style.opacity = '1';
-                    messageElement.style.fontSize = '';
-                }
-            }
-        });
-    }
-
-    // Enable/disable chat
-    setEnabled(enabled) {
-        const chatInput = document.getElementById('chat-input');
-        const sendChat = document.getElementById('send-chat');
-
-        if (chatInput) chatInput.disabled = !enabled;
-        if (sendChat) sendChat.disabled = !enabled;
-
-        if (!enabled) {
-            this.addSystemMessage('Chat wurde deaktiviert');
-        }
-    }
-
-    // Get message count
-    getMessageCount() {
-        return this.messages.length;
-    }
-
-    // Get recent messages
-    getRecentMessages(count = 10) {
-        return this.messages.slice(-count);
-    }
-
-    // Search messages
-    searchMessages(query) {
-        const lowerQuery = query.toLowerCase();
-        return this.messages.filter(msg => 
-            msg.message.toLowerCase().includes(lowerQuery) ||
-            msg.playerName.toLowerCase().includes(lowerQuery)
-        );
-    }
-
-    // Update socket connection
-    updateSocket(newSocket) {
-        this.socket = newSocket;
-        if (this.isInitialized) {
-            this.bindEvents(); // Re-bind socket events
-        }
-    }
-
-    // Cleanup
-    destroy() {
-        // Remove event listeners if needed
-        this.isInitialized = false;
     }
 }
