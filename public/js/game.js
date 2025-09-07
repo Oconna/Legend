@@ -457,6 +457,7 @@ async loadGameData() {
         
         throw error;
     }
+}
 
     // ✅ CRITICAL FIX: Improved map loading with better error handling
     async loadMapData() {
